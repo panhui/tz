@@ -34,6 +34,12 @@ curl -fsSL https://raw.githubusercontent.com/panhui/tz/main/scripts/install-pane
 
 安装完成后会显示访问地址和自动生成的管理令牌。请保存管理令牌，并在服务器防火墙中放行 TCP 8080 端口。
 
+需要重新查看当前管理令牌时，在面板服务器运行：
+
+```bash
+grep '^TZ_ADMIN_TOKEN=' /etc/tz-panel.env
+```
+
 ### Docker Compose（推荐）
 
 ```bash

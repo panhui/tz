@@ -51,7 +51,9 @@ cat >/etc/tz-panel.env <<EOF
 TZ_ADMIN_TOKEN=${ADMIN_TOKEN}
 TZ_LISTEN=:${PORT}
 TZ_DATA=/var/lib/tz/data.json
+TZ_ENV_FILE=/etc/tz-panel.env
 EOF
+chown tz-panel:tz-panel /etc/tz-panel.env
 chmod 0600 /etc/tz-panel.env
 
 cat >/etc/systemd/system/tz-panel.service <<'EOF'
@@ -72,7 +74,7 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/var/lib/tz
+ReadWritePaths=/var/lib/tz /etc/tz-panel.env
 
 [Install]
 WantedBy=multi-user.target

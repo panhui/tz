@@ -47,6 +47,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if err := persistAdminTokenEnv(os.Getenv("TZ_ENV_FILE"), adminToken); err != nil {
+		log.Printf("同步管理令牌文件失败：%v", err)
+	}
 	app := &server{store: s, adminToken: adminToken, agentToken: agentToken}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/", app.api)
@@ -117,8 +120,8 @@ func (s *server) api(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		in.Token = strings.TrimSpace(in.Token)
-		if len(in.Token) < 12 || len(in.Token) > 128 {
-			jsonError(w, "管理令牌长度必须为 12-128 个字符", http.StatusBadRequest)
+		if !validAdminToken(in.Token) {
+			jsonError(w, "管理令牌需为 12-128 位，只能包含字母、数字、点、下划线和短横线", http.StatusBadRequest)
 			return
 		}
 		if err := s.store.SetAdminToken(in.Token); err != nil {
@@ -126,6 +129,9 @@ func (s *server) api(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.setAdminToken(in.Token)
+		if err := persistAdminTokenEnv(os.Getenv("TZ_ENV_FILE"), in.Token); err != nil {
+			log.Printf("同步管理令牌文件失败：%v", err)
+		}
 		writeJSON(w, map[string]bool{"ok": true})
 	case path == "nodes" && r.Method == http.MethodPost:
 		var in struct {
@@ -269,6 +275,18 @@ func validNodeID(id string) bool {
 	return true
 }
 
+func validAdminToken(value string) bool {
+	if len(value) < 12 || len(value) > 128 {
+		return false
+	}
+	for _, r := range value {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '.' && r != '_' && r != '-' {
+			return false
+		}
+	}
+	return true
+}
+
 func (s *server) authorized(r *http.Request) bool {
 	s.tokenMu.RLock()
 	defer s.tokenMu.RUnlock()
@@ -279,6 +297,29 @@ func (s *server) setAdminToken(value string) {
 	s.tokenMu.Lock()
 	s.adminToken = value
 	s.tokenMu.Unlock()
+}
+
+func persistAdminTokenEnv(path, token string) error {
+	if path == "" {
+		return nil
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(strings.TrimRight(string(b), "\n"), "\n")
+	found := false
+	for i := range lines {
+		if strings.HasPrefix(lines[i], "TZ_ADMIN_TOKEN=") {
+			lines[i] = "TZ_ADMIN_TOKEN=" + token
+			found = true
+			break
+		}
+	}
+	if !found {
+		lines = append(lines, "TZ_ADMIN_TOKEN="+token)
+	}
+	return os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0600)
 }
 
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {

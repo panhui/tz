@@ -91,7 +91,7 @@ function renderNodes() {
   $("#emptyState").hidden = nodes.length > 0;
   $("#nodeRows").innerHTML = nodes.map((node) => {
     const isOnline = online(node), memoryPercent = percent(node.memoryUsed, node.memoryTotal), diskPercent = percent(node.diskUsed, node.diskTotal);
-    return `<tr><td><div class="server-name"><i class="status-dot ${isOnline ? "" : "offline"}"></i><button class="server-copy" data-copy-ip="${escapeHTML(node.ip)}" title="点击复制 IP"><strong>${escapeHTML(node.name)}</strong><small>${escapeHTML(node.ip || "等待首次上报")} · ${isOnline ? "在线" : "离线"}</small></button></div></td><td>${uptime(node.uptime)}</td><td><div class="metric"><span class="value">${isOnline ? `${node.cpu.toFixed(1)}%` : "—"}</span><div class="bar"><i style="width:${isOnline ? node.cpu : 0}%"></i></div></div></td><td><div class="metric"><span class="value">${isOnline ? `${memoryPercent.toFixed(1)}%` : "—"}</span><div class="bar"><i style="width:${isOnline ? memoryPercent : 0}%"></i></div></div></td><td><div class="metric"><span class="value">${isOnline ? `${diskPercent.toFixed(1)}%` : "—"}</span><div class="bar"><i style="width:${isOnline ? diskPercent : 0}%"></i></div></div></td><td class="speed up">↑ ${isOnline ? megabits(node.uploadSpeed) : "—"}</td><td class="speed down">↓ ${isOnline ? megabits(node.downloadSpeed) : "—"}</td><td>${bytes(node.totalUpload)}</td><td>${bytes(node.totalDownload)}</td><td><div class="row-actions"><button class="action" title="升级探针" data-upgrade="${node.id}">↻</button><button class="action" title="编辑" data-edit="${node.id}">✎</button><button class="action delete" title="删除" data-delete="${node.id}">×</button></div></td></tr>`;
+    return `<tr><td class="sort-cell">${node.sort}</td><td><div class="server-name"><i class="status-dot ${isOnline ? "" : "offline"}"></i><button class="server-copy" data-copy-ip="${escapeHTML(node.ip)}" title="点击复制 IP"><strong>${escapeHTML(node.name)}</strong><small>${escapeHTML(node.ip || "等待首次上报")} · ${isOnline ? "在线" : "离线"}</small></button></div></td><td class="speed up">↑ ${isOnline ? megabits(node.uploadSpeed) : "—"}</td><td class="speed down">↓ ${isOnline ? megabits(node.downloadSpeed) : "—"}</td><td>${uptime(node.uptime)}</td><td><div class="metric"><span class="value">${isOnline ? `${node.cpu.toFixed(1)}%` : "—"}</span><progress class="bar" max="100" value="${isOnline ? Math.min(100, node.cpu) : 0}" aria-label="CPU 使用率"></progress></div></td><td><div class="metric"><span class="value">${isOnline ? `${memoryPercent.toFixed(1)}%` : "—"}</span><progress class="bar" max="100" value="${isOnline ? memoryPercent : 0}" aria-label="内存使用率"></progress></div></td><td><div class="metric"><span class="value">${isOnline ? `${diskPercent.toFixed(1)}%` : "—"}</span><progress class="bar" max="100" value="${isOnline ? diskPercent : 0}" aria-label="存储使用率"></progress></div></td><td>${bytes(node.totalUpload)}</td><td>${bytes(node.totalDownload)}</td><td><div class="row-actions"><button class="action" title="升级探针" data-upgrade="${node.id}">↻</button><button class="action" title="编辑" data-edit="${node.id}">✎</button><button class="action delete" title="删除" data-delete="${node.id}">×</button></div></td></tr>`;
   }).join("");
   document.querySelectorAll("[data-edit]").forEach((button) => { button.onclick = () => editNode(button.dataset.edit); });
   document.querySelectorAll("[data-delete]").forEach((button) => { button.onclick = () => deleteNode(button.dataset.delete); });
@@ -104,7 +104,7 @@ function openEntityForm(kind, item = null) {
   const nodeGroups = isNode ? groupIDs(item) : [];
   const groupPicker = isNode ? `<div class="field"><label>所属分组</label><details class="server-picker"><summary><span id="groupSummary">已选择 ${nodeGroups.length} 个分组</span><i>⌄</i></summary><div class="server-options">${state.groups.map((group) => `<label class="server-option"><input class="group-choice" type="checkbox" value="${group.id}" ${nodeGroups.includes(group.id) ? "checked" : ""}><span>${escapeHTML(group.name)}</span></label>`).join("") || '<div class="no-options">暂无分组</div>'}</div></details></div>` : "";
   const selectedCount = !isNode && item ? state.nodes.filter((node) => groupIDs(node).includes(item.id)).length : 0;
-  const serverPicker = !isNode && item ? `<div class="field"><label>分组服务器</label><details class="server-picker"><summary><span id="memberSummary">已选择 ${selectedCount} 台</span><i>⌄</i></summary><div class="server-options"><label class="server-option select-all"><input type="checkbox" id="selectAllNodes" ${state.nodes.length > 0 && selectedCount === state.nodes.length ? "checked" : ""}><span>全选服务器</span><b>${state.nodes.length}</b></label>${state.nodes.map((node) => `<label class="server-option"><input class="node-choice" type="checkbox" value="${node.id}" ${groupIDs(node).includes(item.id) ? "checked" : ""}><span>${escapeHTML(node.name)}<small>${escapeHTML(node.ip)}</small></span></label>`).join("") || '<div class="no-options">暂无服务器</div>'}</div></details><small class="field-help">这里只修改当前分组，不影响服务器所在的其他分组</small></div>` : "";
+  const serverPicker = !isNode && item ? `<div class="field"><label>分组服务器</label><details class="server-picker"><summary><span id="memberSummary">已选择 ${selectedCount} 台</span><i>⌄</i></summary><div class="server-options"><div class="picker-search"><span>⌕</span><input id="serverPickerSearch" type="search" placeholder="搜索名称或 IP" autocomplete="off"></div><label class="server-option select-all"><input type="checkbox" id="selectAllNodes" ${state.nodes.length > 0 && selectedCount === state.nodes.length ? "checked" : ""}><span>全选筛选结果</span><b id="visibleNodeCount">${state.nodes.length}</b></label>${state.nodes.map((node) => `<label class="server-option node-option"><input class="node-choice" type="checkbox" value="${node.id}" ${groupIDs(node).includes(item.id) ? "checked" : ""}><span>${escapeHTML(node.name)}<small>${escapeHTML(node.ip)}</small></span></label>`).join("") || '<div class="no-options">暂无服务器</div>'}</div></details><small class="field-help">这里只修改当前分组，不影响服务器所在的其他分组</small></div>` : "";
   $("#modalKicker").textContent = isNode ? "服务器" : "分组";
   $("#modalTitle").textContent = item ? `编辑${isNode ? "服务器" : "分组"}` : "添加分组";
   $("#formFields").innerHTML = isNode
@@ -131,14 +131,22 @@ function setupGroupPicker() {
 }
 
 function setupServerPicker() {
-  const all = $("#selectAllNodes"), choices = [...document.querySelectorAll(".node-choice")], summary = $("#memberSummary");
+  const all = $("#selectAllNodes"), choices = [...document.querySelectorAll(".node-choice")], summary = $("#memberSummary"), search = $("#serverPickerSearch"), visibleCount = $("#visibleNodeCount");
+  const visibleChoices = () => choices.filter((checkbox) => !checkbox.closest(".node-option").hidden);
   const update = () => {
     const count = choices.filter((checkbox) => checkbox.checked).length;
+    const visible = visibleChoices(), visibleSelected = visible.filter((checkbox) => checkbox.checked).length;
     summary.textContent = `已选择 ${count} 台`;
-    all.checked = choices.length > 0 && count === choices.length;
-    all.indeterminate = count > 0 && count < choices.length;
+    visibleCount.textContent = visible.length;
+    all.checked = visible.length > 0 && visibleSelected === visible.length;
+    all.indeterminate = visibleSelected > 0 && visibleSelected < visible.length;
   };
-  all.onchange = () => { choices.forEach((checkbox) => { checkbox.checked = all.checked; }); update(); };
+  search.oninput = () => {
+    const query = search.value.trim().toLowerCase();
+    choices.forEach((checkbox) => { checkbox.closest(".node-option").hidden = query !== "" && !checkbox.closest(".node-option").textContent.toLowerCase().includes(query); });
+    update();
+  };
+  all.onchange = () => { visibleChoices().forEach((checkbox) => { checkbox.checked = all.checked; }); update(); };
   choices.forEach((checkbox) => { checkbox.onchange = update; });
   update();
 }
@@ -175,7 +183,7 @@ function openToken(message = "") {
 function openChangeToken() {
   if ($("#formDialog").open) return;
   $("#modalKicker").textContent = "安全设置"; $("#modalTitle").textContent = "修改管理令牌";
-  $("#formFields").innerHTML = `<div class="field"><label>新管理令牌</label><input name="token" type="password" required minlength="12" maxlength="128" autocomplete="new-password"></div><div class="field"><label>确认新令牌</label><input name="confirmToken" type="password" required minlength="12" maxlength="128" autocomplete="new-password"></div><small class="field-help">修改后，其他已登录浏览器需要使用新令牌重新登录。</small>`;
+  $("#formFields").innerHTML = `<div class="field"><label>新管理令牌</label><input name="token" type="password" required minlength="12" maxlength="128" pattern="[A-Za-z0-9._-]{12,128}" autocomplete="new-password"></div><div class="field"><label>确认新令牌</label><input name="confirmToken" type="password" required minlength="12" maxlength="128" pattern="[A-Za-z0-9._-]{12,128}" autocomplete="new-password"></div><small class="field-help">使用 12-128 位字母、数字、点、下划线或短横线。修改后其他浏览器需重新登录。</small>`;
   $("#entityForm").onsubmit = async (event) => {
     event.preventDefault(); const form = new FormData(event.target), token = form.get("token").trim();
     if (token !== form.get("confirmToken").trim()) { toast("两次输入的令牌不一致"); return; }

@@ -91,7 +91,7 @@ func TestSharedEnrollmentAutoCreatesAndPreservesNode(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, nodes := s.Snapshot()
-	if len(nodes) != 1 || nodes[0].Name != "198.51.100.8" || nodes[0].IP != "198.51.100.8" {
+	if len(nodes) != 1 || nodes[0].Name != "198.51.100.8" || nodes[0].IP != "198.51.100.8" || nodes[0].Sort != 0 {
 		t.Fatalf("unexpected auto-enrolled node: %#v", nodes)
 	}
 	if err := s.UpdateNode(nodes[0].ID, "自定义名称", []string{}, 9); err != nil {

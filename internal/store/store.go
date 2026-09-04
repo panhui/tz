@@ -293,7 +293,7 @@ func (s *Store) AutoReport(nodeID, name, ip, version string, metrics Metrics) (b
 			return upgrade, s.saveLocked()
 		}
 	}
-	n := Node{ID: nodeID, Name: ip, GroupIDs: []string{}, Sort: len(s.data.Nodes), IP: ip, Version: version, LastSeen: time.Now().UTC(), Metrics: metrics}
+	n := Node{ID: nodeID, Name: ip, GroupIDs: []string{}, Sort: 0, IP: ip, Version: version, LastSeen: time.Now().UTC(), Metrics: metrics}
 	s.data.Nodes = append(s.data.Nodes, n)
 	return false, s.saveLocked()
 }
