@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/panhui/tz/internal/assets"
@@ -23,21 +24,26 @@ type server struct {
 	store      *store.Store
 	adminToken string
 	agentToken string
+	tokenMu    sync.RWMutex
 }
 
 func main() {
 	addr := env("TZ_LISTEN", ":8080")
 	dataFile := env("TZ_DATA", "/var/lib/tz/data.json")
-	adminToken := os.Getenv("TZ_ADMIN_TOKEN")
-	if adminToken == "" {
-		adminToken = randomAdminToken()
-		log.Printf("TZ_ADMIN_TOKEN 未设置，本次启动的管理令牌：%s", adminToken)
+	initialAdminToken := os.Getenv("TZ_ADMIN_TOKEN")
+	if initialAdminToken == "" {
+		initialAdminToken = randomAdminToken()
+		log.Printf("TZ_ADMIN_TOKEN 未设置，生成管理令牌：%s", initialAdminToken)
 	}
 	s, err := store.Open(dataFile)
 	if err != nil {
 		log.Fatal(err)
 	}
 	agentToken, err := s.EnsureEnrollmentToken(os.Getenv("TZ_AGENT_TOKEN"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	adminToken, err := s.EnsureAdminToken(initialAdminToken)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -94,6 +100,24 @@ func (s *server) api(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"groups": groups, "nodes": nodes, "serverTime": time.Now().UTC()})
 	case path == "install" && r.Method == http.MethodGet:
 		writeJSON(w, map[string]string{"agentToken": s.agentToken})
+	case path == "admin-token" && r.Method == http.MethodPut:
+		var in struct {
+			Token string `json:"token"`
+		}
+		if !decode(w, r, &in) {
+			return
+		}
+		in.Token = strings.TrimSpace(in.Token)
+		if len(in.Token) < 12 || len(in.Token) > 128 {
+			jsonError(w, "管理令牌长度必须为 12-128 个字符", http.StatusBadRequest)
+			return
+		}
+		if err := s.store.SetAdminToken(in.Token); err != nil {
+			jsonError(w, "保存管理令牌失败", http.StatusInternalServerError)
+			return
+		}
+		s.setAdminToken(in.Token)
+		writeJSON(w, map[string]bool{"ok": true})
 	case path == "nodes" && r.Method == http.MethodPost:
 		var in struct {
 			Name, GroupID string
@@ -151,8 +175,9 @@ func (s *server) api(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, g)
 	case len(parts) == 2 && parts[0] == "groups" && r.Method == http.MethodPut:
 		var in struct {
-			Name string
-			Sort int
+			Name    string
+			Sort    int
+			NodeIDs *[]string `json:"nodeIds"`
 		}
 		if !decode(w, r, &in) {
 			return
@@ -161,7 +186,11 @@ func (s *server) api(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, "分组名称不能为空", http.StatusBadRequest)
 			return
 		}
-		respondErr(w, s.store.UpdateGroup(parts[1], strings.TrimSpace(in.Name), in.Sort))
+		if in.NodeIDs == nil {
+			respondErr(w, s.store.UpdateGroup(parts[1], strings.TrimSpace(in.Name), in.Sort))
+		} else {
+			respondErr(w, s.store.UpdateGroupWithNodes(parts[1], strings.TrimSpace(in.Name), in.Sort, *in.NodeIDs))
+		}
 	case len(parts) == 2 && parts[0] == "groups" && r.Method == http.MethodDelete:
 		respondErr(w, s.store.DeleteGroup(parts[1]))
 	default:
@@ -225,7 +254,15 @@ func validNodeID(id string) bool {
 }
 
 func (s *server) authorized(r *http.Request) bool {
+	s.tokenMu.RLock()
+	defer s.tokenMu.RUnlock()
 	return strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ") == s.adminToken
+}
+
+func (s *server) setAdminToken(value string) {
+	s.tokenMu.Lock()
+	s.adminToken = value
+	s.tokenMu.Unlock()
 }
 
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
@@ -263,8 +300,8 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "same-origin")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'")
-		if r.URL.Path == "/" {
-			w.Header().Set("Cache-Control", "no-store")
+		if r.URL.Path == "/" || strings.HasSuffix(r.URL.Path, ".js") || strings.HasSuffix(r.URL.Path, ".css") {
+			w.Header().Set("Cache-Control", "no-cache")
 		}
 		next.ServeHTTP(w, r)
 	})

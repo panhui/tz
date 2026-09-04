@@ -31,6 +31,11 @@ function bytes(value, speed = false) {
   return `${size.toFixed(digits)} ${units[unit]}${speed ? "/s" : ""}`;
 }
 
+function megabits(value) {
+  const mbps = value * 8 / 1000000;
+  return `${mbps.toFixed(mbps >= 100 ? 0 : mbps >= 10 ? 1 : 2)} Mbps/s`;
+}
+
 function uptime(value) {
   if (!value) return "—";
   const days = Math.floor(value / 86400), hours = Math.floor((value % 86400) / 3600), minutes = Math.floor((value % 3600) / 60);
@@ -63,7 +68,7 @@ function render() {
   const downloadSpeed = active.reduce((sum, node) => sum + node.downloadSpeed, 0);
   const totalUpload = state.nodes.reduce((sum, node) => sum + node.totalUpload, 0);
   const totalDownload = state.nodes.reduce((sum, node) => sum + node.totalDownload, 0);
-  $("#sumUpSpeed").textContent = bytes(uploadSpeed, true); $("#sumDownSpeed").textContent = bytes(downloadSpeed, true);
+  $("#sumUpSpeed").textContent = megabits(uploadSpeed); $("#sumDownSpeed").textContent = megabits(downloadSpeed);
   $("#sumTraffic").textContent = bytes(totalUpload + totalDownload);
   $("#sumTrafficSub").textContent = `上传 ${bytes(totalUpload)} · 下载 ${bytes(totalDownload)}`;
   $("#overviewMeta").textContent = `${active.length} 台在线 · ${state.nodes.length - active.length} 台离线 · 每 3 秒刷新`;
@@ -85,27 +90,45 @@ function renderNodes() {
   $("#emptyState").hidden = nodes.length > 0;
   $("#nodeRows").innerHTML = nodes.map((node) => {
     const isOnline = online(node), memoryPercent = percent(node.memoryUsed, node.memoryTotal), diskPercent = percent(node.diskUsed, node.diskTotal);
-    return `<tr><td><div class="server-name"><i class="status-dot ${isOnline ? "" : "offline"}"></i><div><strong>${escapeHTML(node.name)}</strong><small>${escapeHTML(node.ip || "等待首次上报")} · ${isOnline ? "在线" : "离线"}</small></div></div></td><td>${uptime(node.uptime)}</td><td><div class="metric"><span class="value">${isOnline ? `${node.cpu.toFixed(1)}%` : "—"}</span><div class="bar"><i style="width:${node.cpu || 0}%"></i></div></div></td><td><div class="metric"><span class="value">${bytes(node.memoryUsed)} / ${bytes(node.memoryTotal)}</span><div class="bar blue"><i style="width:${memoryPercent}%"></i></div></div></td><td><div class="metric"><span class="value">${bytes(node.diskUsed)} / ${bytes(node.diskTotal)}</span><div class="bar violet"><i style="width:${diskPercent}%"></i></div></div></td><td class="speed up">↑ ${isOnline ? bytes(node.uploadSpeed, true) : "—"}</td><td class="speed down">↓ ${isOnline ? bytes(node.downloadSpeed, true) : "—"}</td><td>${bytes(node.totalUpload)}</td><td>${bytes(node.totalDownload)}</td><td><div class="row-actions"><button class="action" title="升级探针" data-upgrade="${node.id}">↻</button><button class="action" title="编辑" data-edit="${node.id}">✎</button><button class="action delete" title="删除" data-delete="${node.id}">×</button></div></td></tr>`;
+    return `<tr><td><div class="server-name"><i class="status-dot ${isOnline ? "" : "offline"}"></i><button class="server-copy" data-copy-ip="${escapeHTML(node.ip)}" title="点击复制 IP"><strong>${escapeHTML(node.name)}</strong><small>${escapeHTML(node.ip || "等待首次上报")} · ${isOnline ? "在线" : "离线"}</small></button></div></td><td>${uptime(node.uptime)}</td><td><div class="metric"><span class="value">${isOnline ? `${node.cpu.toFixed(1)}%` : "—"}</span><div class="bar"><i style="width:${isOnline ? node.cpu : 0}%"></i></div></div></td><td><div class="metric"><span class="value">${isOnline ? `${memoryPercent.toFixed(1)}%` : "—"}</span><div class="bar"><i style="width:${isOnline ? memoryPercent : 0}%"></i></div></div></td><td><div class="metric"><span class="value">${isOnline ? `${diskPercent.toFixed(1)}%` : "—"}</span><div class="bar"><i style="width:${isOnline ? diskPercent : 0}%"></i></div></div></td><td class="speed up">↑ ${isOnline ? megabits(node.uploadSpeed) : "—"}</td><td class="speed down">↓ ${isOnline ? megabits(node.downloadSpeed) : "—"}</td><td>${bytes(node.totalUpload)}</td><td>${bytes(node.totalDownload)}</td><td><div class="row-actions"><button class="action" title="升级探针" data-upgrade="${node.id}">↻</button><button class="action" title="编辑" data-edit="${node.id}">✎</button><button class="action delete" title="删除" data-delete="${node.id}">×</button></div></td></tr>`;
   }).join("");
   document.querySelectorAll("[data-edit]").forEach((button) => { button.onclick = () => editNode(button.dataset.edit); });
   document.querySelectorAll("[data-delete]").forEach((button) => { button.onclick = () => deleteNode(button.dataset.delete); });
   document.querySelectorAll("[data-upgrade]").forEach((button) => { button.onclick = () => upgradeNode(button.dataset.upgrade); });
+  document.querySelectorAll("[data-copy-ip]").forEach((button) => { button.onclick = () => copyText(button.dataset.copyIp).then(() => toast(`已复制 ${button.dataset.copyIp}`)).catch((error) => toast(error.message)); });
 }
 
 function openEntityForm(kind, item = null) {
   const isNode = kind === "node";
+  const selectedCount = !isNode && item ? state.nodes.filter((node) => node.groupId === item.id).length : 0;
+  const serverPicker = !isNode && item ? `<div class="field"><label>分组服务器</label><details class="server-picker"><summary><span id="memberSummary">已选择 ${selectedCount} 台</span><i>⌄</i></summary><div class="server-options"><label class="server-option select-all"><input type="checkbox" id="selectAllNodes" ${state.nodes.length > 0 && selectedCount === state.nodes.length ? "checked" : ""}><span>全选服务器</span><b>${state.nodes.length}</b></label>${state.nodes.map((node) => `<label class="server-option"><input class="node-choice" type="checkbox" value="${node.id}" ${node.groupId === item.id ? "checked" : ""}><span>${escapeHTML(node.name)}<small>${escapeHTML(node.ip)}</small></span></label>`).join("") || '<div class="no-options">暂无服务器</div>'}</div></details><small class="field-help">勾选其他分组的服务器会将其移动到当前分组</small></div>` : "";
   $("#modalKicker").textContent = isNode ? "服务器" : "分组";
   $("#modalTitle").textContent = item ? `编辑${isNode ? "服务器" : "分组"}` : "添加分组";
   $("#formFields").innerHTML = isNode
     ? `<div class="field"><label>服务器名称</label><input name="name" required maxlength="60" value="${escapeHTML(item.name)}"></div><div class="two-fields"><div class="field"><label>所属分组</label><select name="groupId"><option value="">未分组</option>${state.groups.map((group) => `<option value="${group.id}" ${item.groupId === group.id ? "selected" : ""}>${escapeHTML(group.name)}</option>`).join("")}</select></div><div class="field"><label>排序</label><input name="sort" type="number" value="${item.sort}"></div></div>`
-    : `<div class="field"><label>分组名称</label><input name="name" required maxlength="40" value="${escapeHTML(item?.name || "")}"></div><div class="field"><label>排序</label><input name="sort" type="number" value="${item?.sort ?? state.groups.length}"></div>`;
+    : `<div class="field"><label>分组名称</label><input name="name" required maxlength="40" value="${escapeHTML(item?.name || "")}"></div><div class="field"><label>排序</label><input name="sort" type="number" value="${item?.sort ?? state.groups.length}"></div>${serverPicker}`;
+  if (!isNode && item) setupServerPicker();
   $("#entityForm").onsubmit = async (event) => {
     event.preventDefault(); const body = Object.fromEntries(new FormData(event.target)); body.sort = Number(body.sort) || 0;
+    if (!isNode && item) body.nodeIds = [...document.querySelectorAll(".node-choice:checked")].map((checkbox) => checkbox.value);
     const path = item ? `${isNode ? "nodes" : "groups"}/${item.id}` : "groups";
     try { await api(path, { method: item ? "PUT" : "POST", body: JSON.stringify(body) }); $("#formDialog").close(); await load(); toast("已保存"); }
     catch (error) { if (error.status !== 401) toast(error.message); }
   };
   $("#formDialog").showModal(); setTimeout(() => $("#formFields input")?.focus(), 50);
+}
+
+function setupServerPicker() {
+  const all = $("#selectAllNodes"), choices = [...document.querySelectorAll(".node-choice")], summary = $("#memberSummary");
+  const update = () => {
+    const count = choices.filter((checkbox) => checkbox.checked).length;
+    summary.textContent = `已选择 ${count} 台`;
+    all.checked = choices.length > 0 && count === choices.length;
+    all.indeterminate = count > 0 && count < choices.length;
+  };
+  all.onchange = () => { choices.forEach((checkbox) => { checkbox.checked = all.checked; }); update(); };
+  choices.forEach((checkbox) => { checkbox.onchange = update; });
+  update();
 }
 
 const editNode = (id) => openEntityForm("node", state.nodes.find((node) => node.id === id));
@@ -137,6 +160,28 @@ function openToken(message = "") {
   $("#formDialog").showModal(); setTimeout(() => $("#formFields input")?.focus(), 50);
 }
 
+function openChangeToken() {
+  if ($("#formDialog").open) return;
+  $("#modalKicker").textContent = "安全设置"; $("#modalTitle").textContent = "修改管理令牌";
+  $("#formFields").innerHTML = `<div class="field"><label>新管理令牌</label><input name="token" type="password" required minlength="12" maxlength="128" autocomplete="new-password"></div><div class="field"><label>确认新令牌</label><input name="confirmToken" type="password" required minlength="12" maxlength="128" autocomplete="new-password"></div><small class="field-help">修改后，其他已登录浏览器需要使用新令牌重新登录。</small>`;
+  $("#entityForm").onsubmit = async (event) => {
+    event.preventDefault(); const form = new FormData(event.target), token = form.get("token").trim();
+    if (token !== form.get("confirmToken").trim()) { toast("两次输入的令牌不一致"); return; }
+    try {
+      await api("admin-token", { method: "PUT", body: JSON.stringify({ token }) });
+      state.token = token; localStorage.setItem("tz-admin-token", token); $("#formDialog").close(); toast("管理令牌已修改");
+    } catch (error) { if (error.status !== 401) toast(error.message); }
+  };
+  $("#formDialog").showModal(); setTimeout(() => $("#formFields input")?.focus(), 50);
+}
+
+async function copyText(text) {
+  if (!text) throw new Error("没有可复制的内容");
+  if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return; }
+  const textarea = document.createElement("textarea"); textarea.value = text; textarea.style.position = "fixed"; textarea.style.opacity = "0";
+  document.body.appendChild(textarea); textarea.select(); document.execCommand("copy"); textarea.remove();
+}
+
 async function openInstallCommand() {
   try {
     const config = await api("install");
@@ -153,9 +198,9 @@ function registerWebMCP() {
 }
 
 $("#installAgentBtn").onclick = openInstallCommand; $("#emptyInstallBtn").onclick = openInstallCommand;
-$("#addGroupBtn").onclick = () => openEntityForm("group"); $("#tokenBtn").onclick = () => openToken();
+$("#addGroupBtn").onclick = () => openEntityForm("group"); $("#tokenBtn").onclick = () => state.token ? openChangeToken() : openToken();
 $("#search").oninput = (event) => { state.query = event.target.value.trim().toLowerCase(); renderNodes(); };
-$("#copyCommand").onclick = async () => { await navigator.clipboard.writeText($("#installCommand").textContent); toast("命令已复制"); };
+$("#copyCommand").onclick = async () => { await copyText($("#installCommand").textContent); toast("命令已复制"); };
 $("#commandDone").onclick = () => $("#commandDialog").close();
 if (state.token) load(); else openToken();
 setInterval(() => { if (state.token) load(); }, 3000);

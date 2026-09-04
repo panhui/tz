@@ -74,7 +74,7 @@ func TestSharedEnrollmentAutoCreatesAndPreservesNode(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, nodes := s.Snapshot()
-	if len(nodes) != 1 || nodes[0].Name != "host-a" || nodes[0].IP != "198.51.100.8" {
+	if len(nodes) != 1 || nodes[0].Name != "198.51.100.8" || nodes[0].IP != "198.51.100.8" {
 		t.Fatalf("unexpected auto-enrolled node: %#v", nodes)
 	}
 	if err := s.UpdateNode(nodes[0].ID, "自定义名称", "", 9); err != nil {
@@ -94,5 +94,45 @@ func TestSharedEnrollmentAutoCreatesAndPreservesNode(t *testing.T) {
 	persistedToken, err := reopened.EnsureEnrollmentToken("")
 	if err != nil || persistedToken != enrollmentToken {
 		t.Fatalf("enrollment token did not persist: %q != %q", persistedToken, enrollmentToken)
+	}
+}
+
+func TestAdminTokenAndGroupAssignmentsPersist(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.json")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminToken, err := s.EnsureAdminToken("initial-token-123")
+	if err != nil || adminToken != "initial-token-123" {
+		t.Fatalf("unexpected initial admin token: %q %v", adminToken, err)
+	}
+	group, _ := s.CreateGroup("亚洲", 1)
+	first, _ := s.CreateNode("one", "", 1)
+	second, _ := s.CreateNode("two", "", 2)
+	if err := s.UpdateGroupWithNodes(group.ID, "亚洲节点", 3, []string{first.ID, second.ID}); err != nil {
+		t.Fatal(err)
+	}
+	_, nodes := s.Snapshot()
+	if nodes[0].GroupID != group.ID || nodes[1].GroupID != group.ID {
+		t.Fatalf("nodes were not assigned: %#v", nodes)
+	}
+	if err := s.UpdateGroupWithNodes(group.ID, "亚洲节点", 3, []string{second.ID}); err != nil {
+		t.Fatal(err)
+	}
+	_, nodes = s.Snapshot()
+	if nodes[0].GroupID != "" || nodes[1].GroupID != group.ID {
+		t.Fatalf("unchecked node was not removed: %#v", nodes)
+	}
+	if err := s.SetAdminToken("changed-token-456"); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := reopened.EnsureAdminToken("initial-token-123")
+	if err != nil || persisted != "changed-token-456" {
+		t.Fatalf("changed admin token did not persist: %q %v", persisted, err)
 	}
 }

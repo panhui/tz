@@ -46,8 +46,27 @@ type Group struct {
 
 type data struct {
 	EnrollmentToken string  `json:"enrollmentToken"`
+	AdminToken      string  `json:"adminToken"`
 	Groups          []Group `json:"groups"`
 	Nodes           []Node  `json:"nodes"`
+}
+
+// EnsureAdminToken stores the initial token and returns the persisted token.
+// A token changed in the dashboard therefore survives service restarts.
+func (s *Store) EnsureAdminToken(initial string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.data.AdminToken == "" {
+		s.data.AdminToken = initial
+	}
+	return s.data.AdminToken, s.saveLocked()
+}
+
+func (s *Store) SetAdminToken(value string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data.AdminToken = value
+	return s.saveLocked()
 }
 
 // EnsureEnrollmentToken returns the shared token used by all new agents. The
@@ -177,6 +196,37 @@ func (s *Store) UpdateGroup(id, name string, order int) error {
 	return os.ErrNotExist
 }
 
+// UpdateGroupWithNodes updates a group and moves the selected nodes into it.
+// Nodes unchecked from this group become ungrouped; nodes in other groups are
+// left alone unless explicitly selected.
+func (s *Store) UpdateGroupWithNodes(id, name string, order int, nodeIDs []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	found := false
+	for i := range s.data.Groups {
+		if s.data.Groups[i].ID == id {
+			s.data.Groups[i].Name, s.data.Groups[i].Sort = name, order
+			found = true
+			break
+		}
+	}
+	if !found {
+		return os.ErrNotExist
+	}
+	selected := make(map[string]bool, len(nodeIDs))
+	for _, nodeID := range nodeIDs {
+		selected[nodeID] = true
+	}
+	for i := range s.data.Nodes {
+		if selected[s.data.Nodes[i].ID] {
+			s.data.Nodes[i].GroupID = id
+		} else if s.data.Nodes[i].GroupID == id {
+			s.data.Nodes[i].GroupID = ""
+		}
+	}
+	return s.saveLocked()
+}
+
 func (s *Store) DeleteGroup(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -210,7 +260,7 @@ func (s *Store) Report(agentToken, ip, version string, metrics Metrics) (bool, e
 }
 
 // AutoReport updates an automatically enrolled node, creating it on the first
-// heartbeat. Its display name is only initialized once so dashboard edits win.
+// heartbeat. Its display name defaults to the observed IP and dashboard edits win.
 func (s *Store) AutoReport(nodeID, name, ip, version string, metrics Metrics) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -218,7 +268,7 @@ func (s *Store) AutoReport(nodeID, name, ip, version string, metrics Metrics) (b
 		n := &s.data.Nodes[i]
 		if n.ID == nodeID {
 			if n.Name == "" {
-				n.Name = name
+				n.Name = ip
 			}
 			n.IP, n.Version, n.LastSeen, n.Metrics = ip, version, time.Now().UTC(), metrics
 			upgrade := n.UpgradeRequested
@@ -226,7 +276,7 @@ func (s *Store) AutoReport(nodeID, name, ip, version string, metrics Metrics) (b
 			return upgrade, s.saveLocked()
 		}
 	}
-	n := Node{ID: nodeID, Name: name, Sort: len(s.data.Nodes), IP: ip, Version: version, LastSeen: time.Now().UTC(), Metrics: metrics}
+	n := Node{ID: nodeID, Name: ip, Sort: len(s.data.Nodes), IP: ip, Version: version, LastSeen: time.Now().UTC(), Metrics: metrics}
 	s.data.Nodes = append(s.data.Nodes, n)
 	return false, s.saveLocked()
 }
