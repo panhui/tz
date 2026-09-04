@@ -1,0 +1,15 @@
+services:
+  panel:
+    build: .
+    image: ghcr.io/panhui/tz-panel:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      TZ_ADMIN_TOKEN: "change-this-admin-token"
+    volumes:
+      - tz-data:/var/lib/tz
+
+volumes:
+  tz-data:
+
