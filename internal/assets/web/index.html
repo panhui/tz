@@ -44,7 +44,7 @@
   </div>
 
   <dialog id="formDialog"><form method="dialog" id="entityForm"><div class="modal-head"><div><span id="modalKicker">服务器</span><h2 id="modalTitle">添加服务器</h2></div><button value="cancel" class="close" aria-label="关闭">×</button></div><div id="formFields"></div><div class="modal-actions"><button value="cancel" class="btn ghost">取消</button><button value="default" class="btn primary" id="saveBtn">保存</button></div></form></dialog>
-  <dialog id="commandDialog"><div class="command-card"><div class="success-mark">↓</div><span>通用安装命令</span><h2>在所有节点运行同一条命令</h2><p>复制下面的命令，以 root 用户执行。每台服务器会生成独立节点并自动开始上报。</p><div class="command"><code id="installCommand"></code><button id="copyCommand">复制</button></div><button class="btn primary wide" id="commandDone">完成</button></div></dialog>
+  <dialog id="commandDialog"><div class="command-card"><div class="success-mark">↓</div><span>探针命令</span><h2>安装或卸载探针</h2><p>在节点服务器以 root 用户执行。所有服务器共用同一条安装命令。</p><div class="command-block"><label>安装命令</label><div class="command"><code id="installCommand"></code><button id="copyInstallCommand" type="button">复制</button></div></div><div class="command-block"><label>卸载命令</label><div class="command"><code id="uninstallCommand"></code><button id="copyUninstallCommand" type="button">复制</button></div></div><button class="btn primary wide" id="commandDone">完成</button></div></dialog>
   <div id="toast" role="status"></div>
   <script src="/app.js"></script>
 </body>

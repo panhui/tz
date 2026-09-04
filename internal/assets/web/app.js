@@ -44,6 +44,7 @@ function uptime(value) {
 
 const percent = (used, total) => total ? Math.min(100, used / total * 100) : 0;
 const online = (node) => Date.now() - new Date(node.lastSeen).getTime() < 15000;
+const groupIDs = (node) => node.groupIds || (node.groupId ? [node.groupId] : []);
 const escapeHTML = (value) => String(value ?? "").replace(/[&<>'"]/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
 })[char]);
@@ -76,7 +77,7 @@ function render() {
 }
 
 function renderGroups() {
-  const counts = {}; state.nodes.forEach((node) => { counts[node.groupId] = (counts[node.groupId] || 0) + 1; });
+  const counts = {}; state.nodes.forEach((node) => { groupIDs(node).forEach((groupID) => { counts[groupID] = (counts[groupID] || 0) + 1; }); });
   $("#groupList").innerHTML = `<button class="group ${state.group === "" ? "active" : ""}" data-group=""><span><i class="dot all"></i>全部服务器</span><b>${state.nodes.length}</b></button>` + state.groups.map((group) => `<div class="group-row"><button class="group ${state.group === group.id ? "active" : ""}" data-group="${group.id}"><span><i class="dot online"></i>${escapeHTML(group.name)}</span><b>${counts[group.id] || 0}</b></button><button class="group-edit" data-group-edit="${group.id}" title="编辑分组">✎</button><button class="group-delete" data-group-delete="${group.id}" title="删除分组">×</button></div>`).join("");
   document.querySelectorAll(".group").forEach((button) => { button.onclick = () => { state.group = button.dataset.group; render(); }; });
   document.querySelectorAll("[data-group-edit]").forEach((button) => { button.onclick = () => openEntityForm("group", state.groups.find((group) => group.id === button.dataset.groupEdit)); });
@@ -84,7 +85,7 @@ function renderGroups() {
 }
 
 function renderNodes() {
-  const nodes = state.nodes.filter((node) => (!state.group || node.groupId === state.group) && (!state.query || `${node.name} ${node.ip}`.toLowerCase().includes(state.query)));
+  const nodes = state.nodes.filter((node) => (!state.group || groupIDs(node).includes(state.group)) && (!state.query || `${node.name} ${node.ip}`.toLowerCase().includes(state.query)));
   const group = state.groups.find((item) => item.id === state.group);
   $("#listTitle").textContent = group ? group.name : "全部服务器"; $("#listMeta").textContent = `${nodes.length} 台服务器`;
   $("#emptyState").hidden = nodes.length > 0;
@@ -100,22 +101,33 @@ function renderNodes() {
 
 function openEntityForm(kind, item = null) {
   const isNode = kind === "node";
-  const selectedCount = !isNode && item ? state.nodes.filter((node) => node.groupId === item.id).length : 0;
-  const serverPicker = !isNode && item ? `<div class="field"><label>分组服务器</label><details class="server-picker"><summary><span id="memberSummary">已选择 ${selectedCount} 台</span><i>⌄</i></summary><div class="server-options"><label class="server-option select-all"><input type="checkbox" id="selectAllNodes" ${state.nodes.length > 0 && selectedCount === state.nodes.length ? "checked" : ""}><span>全选服务器</span><b>${state.nodes.length}</b></label>${state.nodes.map((node) => `<label class="server-option"><input class="node-choice" type="checkbox" value="${node.id}" ${node.groupId === item.id ? "checked" : ""}><span>${escapeHTML(node.name)}<small>${escapeHTML(node.ip)}</small></span></label>`).join("") || '<div class="no-options">暂无服务器</div>'}</div></details><small class="field-help">勾选其他分组的服务器会将其移动到当前分组</small></div>` : "";
+  const nodeGroups = isNode ? groupIDs(item) : [];
+  const groupPicker = isNode ? `<div class="field"><label>所属分组</label><details class="server-picker"><summary><span id="groupSummary">已选择 ${nodeGroups.length} 个分组</span><i>⌄</i></summary><div class="server-options">${state.groups.map((group) => `<label class="server-option"><input class="group-choice" type="checkbox" value="${group.id}" ${nodeGroups.includes(group.id) ? "checked" : ""}><span>${escapeHTML(group.name)}</span></label>`).join("") || '<div class="no-options">暂无分组</div>'}</div></details></div>` : "";
+  const selectedCount = !isNode && item ? state.nodes.filter((node) => groupIDs(node).includes(item.id)).length : 0;
+  const serverPicker = !isNode && item ? `<div class="field"><label>分组服务器</label><details class="server-picker"><summary><span id="memberSummary">已选择 ${selectedCount} 台</span><i>⌄</i></summary><div class="server-options"><label class="server-option select-all"><input type="checkbox" id="selectAllNodes" ${state.nodes.length > 0 && selectedCount === state.nodes.length ? "checked" : ""}><span>全选服务器</span><b>${state.nodes.length}</b></label>${state.nodes.map((node) => `<label class="server-option"><input class="node-choice" type="checkbox" value="${node.id}" ${groupIDs(node).includes(item.id) ? "checked" : ""}><span>${escapeHTML(node.name)}<small>${escapeHTML(node.ip)}</small></span></label>`).join("") || '<div class="no-options">暂无服务器</div>'}</div></details><small class="field-help">这里只修改当前分组，不影响服务器所在的其他分组</small></div>` : "";
   $("#modalKicker").textContent = isNode ? "服务器" : "分组";
   $("#modalTitle").textContent = item ? `编辑${isNode ? "服务器" : "分组"}` : "添加分组";
   $("#formFields").innerHTML = isNode
-    ? `<div class="field"><label>服务器名称</label><input name="name" required maxlength="60" value="${escapeHTML(item.name)}"></div><div class="two-fields"><div class="field"><label>所属分组</label><select name="groupId"><option value="">未分组</option>${state.groups.map((group) => `<option value="${group.id}" ${item.groupId === group.id ? "selected" : ""}>${escapeHTML(group.name)}</option>`).join("")}</select></div><div class="field"><label>排序</label><input name="sort" type="number" value="${item.sort}"></div></div>`
+    ? `<div class="field"><label>服务器名称</label><input name="name" required maxlength="60" value="${escapeHTML(item.name)}"></div><div class="field"><label>排序</label><input name="sort" type="number" value="${item.sort}"></div>${groupPicker}`
     : `<div class="field"><label>分组名称</label><input name="name" required maxlength="40" value="${escapeHTML(item?.name || "")}"></div><div class="field"><label>排序</label><input name="sort" type="number" value="${item?.sort ?? state.groups.length}"></div>${serverPicker}`;
+  if (isNode) setupGroupPicker();
   if (!isNode && item) setupServerPicker();
   $("#entityForm").onsubmit = async (event) => {
     event.preventDefault(); const body = Object.fromEntries(new FormData(event.target)); body.sort = Number(body.sort) || 0;
+    if (isNode) body.groupIds = [...document.querySelectorAll(".group-choice:checked")].map((checkbox) => checkbox.value);
     if (!isNode && item) body.nodeIds = [...document.querySelectorAll(".node-choice:checked")].map((checkbox) => checkbox.value);
     const path = item ? `${isNode ? "nodes" : "groups"}/${item.id}` : "groups";
     try { await api(path, { method: item ? "PUT" : "POST", body: JSON.stringify(body) }); $("#formDialog").close(); await load(); toast("已保存"); }
     catch (error) { if (error.status !== 401) toast(error.message); }
   };
   $("#formDialog").showModal(); setTimeout(() => $("#formFields input")?.focus(), 50);
+}
+
+function setupGroupPicker() {
+  const choices = [...document.querySelectorAll(".group-choice")], summary = $("#groupSummary");
+  const update = () => { summary.textContent = `已选择 ${choices.filter((checkbox) => checkbox.checked).length} 个分组`; };
+  choices.forEach((checkbox) => { checkbox.onchange = update; });
+  update();
 }
 
 function setupServerPicker() {
@@ -177,15 +189,22 @@ function openChangeToken() {
 
 async function copyText(text) {
   if (!text) throw new Error("没有可复制的内容");
-  if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return; }
+  if (navigator.clipboard && window.isSecureContext) {
+    try { await navigator.clipboard.writeText(text); return; } catch (_) { /* use the HTTP-compatible fallback */ }
+  }
   const textarea = document.createElement("textarea"); textarea.value = text; textarea.style.position = "fixed"; textarea.style.opacity = "0";
-  document.body.appendChild(textarea); textarea.select(); document.execCommand("copy"); textarea.remove();
+  textarea.setAttribute("readonly", "");
+  const container = document.querySelector("dialog[open]") || document.body;
+  container.appendChild(textarea); textarea.focus(); textarea.select();
+  const copied = document.execCommand("copy"); textarea.remove();
+  if (!copied) throw new Error("复制失败，请长按或手动选择命令");
 }
 
 async function openInstallCommand() {
   try {
     const config = await api("install");
     $("#installCommand").textContent = `curl -fsSL ${location.origin}/install.sh | bash -s -- --url ${location.origin} --token ${config.agentToken}`;
+    $("#uninstallCommand").textContent = `curl -fsSL ${location.origin}/uninstall.sh | bash`;
     $("#commandDialog").showModal();
   } catch (error) { if (error.status !== 401) toast(error.message); }
 }
@@ -194,13 +213,14 @@ function registerWebMCP() {
   const context = document.modelContext; if (!context?.registerTool) return;
   const register = (tool) => Promise.resolve(context.registerTool(tool)).catch(() => {});
   register({ name: "get_server_overview", title: "获取服务器概览", description: "读取当前面板中的服务器、分组和在线状态。", inputSchema: { type: "object", properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: false }, execute: async () => { const dashboard = await api("dashboard"); return { groups: dashboard.groups.map((group) => ({ id: group.id, name: group.name })), servers: dashboard.nodes.map((node) => ({ id: node.id, name: node.name, ip: node.ip, online: online(node), cpu: node.cpu })) }; } });
-  register({ name: "get_agent_install_command", title: "获取探针安装命令", description: "获取可在所有 Linux 节点重复使用的通用探针安装命令。", inputSchema: { type: "object", properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: false }, execute: async () => { const config = await api("install"); return { installCommand: `curl -fsSL ${location.origin}/install.sh | bash -s -- --url ${location.origin} --token ${config.agentToken}` }; } });
+  register({ name: "get_agent_install_command", title: "获取探针命令", description: "获取可在所有 Linux 节点重复使用的探针安装和卸载命令。", inputSchema: { type: "object", properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: false }, execute: async () => { const config = await api("install"); return { installCommand: `curl -fsSL ${location.origin}/install.sh | bash -s -- --url ${location.origin} --token ${config.agentToken}`, uninstallCommand: `curl -fsSL ${location.origin}/uninstall.sh | bash` }; } });
 }
 
 $("#installAgentBtn").onclick = openInstallCommand; $("#emptyInstallBtn").onclick = openInstallCommand;
 $("#addGroupBtn").onclick = () => openEntityForm("group"); $("#tokenBtn").onclick = () => state.token ? openChangeToken() : openToken();
 $("#search").oninput = (event) => { state.query = event.target.value.trim().toLowerCase(); renderNodes(); };
-$("#copyCommand").onclick = async () => { await copyText($("#installCommand").textContent); toast("命令已复制"); };
+$("#copyInstallCommand").onclick = () => copyText($("#installCommand").textContent).then(() => toast("安装命令已复制")).catch((error) => toast(error.message));
+$("#copyUninstallCommand").onclick = () => copyText($("#uninstallCommand").textContent).then(() => toast("卸载命令已复制")).catch((error) => toast(error.message));
 $("#commandDone").onclick = () => $("#commandDialog").close();
 if (state.token) load(); else openToken();
 setInterval(() => { if (state.token) load(); }, 3000);

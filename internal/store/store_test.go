@@ -1,6 +1,7 @@
 package store
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -48,6 +49,22 @@ func TestNodeLifecycleAndReport(t *testing.T) {
 	}
 }
 
+func TestLegacySingleGroupMigrates(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.json")
+	legacy := `{"groups":[{"id":"group-old","name":"旧分组","sort":1}],"nodes":[{"id":"node-old","name":"旧节点","groupId":"group-old","sort":1}]}`
+	if err := os.WriteFile(path, []byte(legacy), 0600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, nodes := s.Snapshot()
+	if len(nodes) != 1 || !contains(nodes[0].GroupIDs, "group-old") {
+		t.Fatalf("legacy group was not migrated: %#v", nodes)
+	}
+}
+
 func TestEmptySnapshotUsesArrays(t *testing.T) {
 	s, err := Open(filepath.Join(t.TempDir(), "data.json"))
 	if err != nil {
@@ -77,7 +94,7 @@ func TestSharedEnrollmentAutoCreatesAndPreservesNode(t *testing.T) {
 	if len(nodes) != 1 || nodes[0].Name != "198.51.100.8" || nodes[0].IP != "198.51.100.8" {
 		t.Fatalf("unexpected auto-enrolled node: %#v", nodes)
 	}
-	if err := s.UpdateNode(nodes[0].ID, "自定义名称", "", 9); err != nil {
+	if err := s.UpdateNode(nodes[0].ID, "自定义名称", []string{}, 9); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.AutoReport("node-12345678", "host-a-renamed", "198.51.100.9", "v2", m); err != nil {
@@ -114,15 +131,29 @@ func TestAdminTokenAndGroupAssignmentsPersist(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, nodes := s.Snapshot()
-	if nodes[0].GroupID != group.ID || nodes[1].GroupID != group.ID {
+	if !contains(nodes[0].GroupIDs, group.ID) || !contains(nodes[1].GroupIDs, group.ID) {
 		t.Fatalf("nodes were not assigned: %#v", nodes)
+	}
+	secondGroup, _ := s.CreateGroup("高可用", 9)
+	if err := s.UpdateGroupWithNodes(secondGroup.ID, "高可用", 9, []string{first.ID}); err != nil {
+		t.Fatal(err)
+	}
+	_, nodes = s.Snapshot()
+	firstNode := nodeByID(nodes, first.ID)
+	if !contains(firstNode.GroupIDs, group.ID) || !contains(firstNode.GroupIDs, secondGroup.ID) {
+		t.Fatalf("node should belong to multiple groups: %#v", firstNode.GroupIDs)
 	}
 	if err := s.UpdateGroupWithNodes(group.ID, "亚洲节点", 3, []string{second.ID}); err != nil {
 		t.Fatal(err)
 	}
 	_, nodes = s.Snapshot()
-	if nodes[0].GroupID != "" || nodes[1].GroupID != group.ID {
+	firstNode, secondNode := nodeByID(nodes, first.ID), nodeByID(nodes, second.ID)
+	if contains(firstNode.GroupIDs, group.ID) || !contains(firstNode.GroupIDs, secondGroup.ID) || !contains(secondNode.GroupIDs, group.ID) {
 		t.Fatalf("unchecked node was not removed: %#v", nodes)
+	}
+	groups, _ := s.Snapshot()
+	if groups[0].ID != secondGroup.ID {
+		t.Fatalf("larger sort value should appear first: %#v", groups)
 	}
 	if err := s.SetAdminToken("changed-token-456"); err != nil {
 		t.Fatal(err)
@@ -135,4 +166,13 @@ func TestAdminTokenAndGroupAssignmentsPersist(t *testing.T) {
 	if err != nil || persisted != "changed-token-456" {
 		t.Fatalf("changed admin token did not persist: %q %v", persisted, err)
 	}
+}
+
+func nodeByID(nodes []Node, id string) Node {
+	for _, node := range nodes {
+		if node.ID == id {
+			return node
+		}
+	}
+	return Node{}
 }

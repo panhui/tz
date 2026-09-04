@@ -51,6 +51,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/", app.api)
 	mux.HandleFunc("/install.sh", installScript)
+	mux.HandleFunc("/uninstall.sh", uninstallScript)
 	web, _ := fs.Sub(assets.Files, "web")
 	mux.Handle("/", http.FileServer(http.FS(web)))
 	h := securityHeaders(requestLog(mux))
@@ -74,7 +75,15 @@ func randomAdminToken() string {
 }
 
 func installScript(w http.ResponseWriter, r *http.Request) {
-	b, err := assets.Files.ReadFile("scripts/install-agent.sh")
+	serveScript(w, "scripts/install-agent.sh")
+}
+
+func uninstallScript(w http.ResponseWriter, r *http.Request) {
+	serveScript(w, "scripts/uninstall-agent.sh")
+}
+
+func serveScript(w http.ResponseWriter, path string) {
+	b, err := assets.Files.ReadFile(path)
 	if err != nil {
 		http.Error(w, "installer unavailable", 500)
 		return
@@ -142,6 +151,7 @@ func (s *server) api(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Name, GroupID string
 			Sort          int
+			GroupIDs      *[]string `json:"groupIds"`
 		}
 		if !decode(w, r, &in) {
 			return
@@ -150,7 +160,13 @@ func (s *server) api(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, "服务器名称不能为空", http.StatusBadRequest)
 			return
 		}
-		respondErr(w, s.store.UpdateNode(parts[1], strings.TrimSpace(in.Name), in.GroupID, in.Sort))
+		groupIDs := []string{}
+		if in.GroupIDs != nil {
+			groupIDs = *in.GroupIDs
+		} else if in.GroupID != "" {
+			groupIDs = []string{in.GroupID}
+		}
+		respondErr(w, s.store.UpdateNode(parts[1], strings.TrimSpace(in.Name), groupIDs, in.Sort))
 	case len(parts) == 2 && parts[0] == "nodes" && r.Method == http.MethodDelete:
 		respondErr(w, s.store.DeleteNode(parts[1]))
 	case len(parts) == 3 && parts[0] == "nodes" && parts[2] == "upgrade" && r.Method == http.MethodPost:
