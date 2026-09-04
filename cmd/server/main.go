@@ -22,6 +22,7 @@ var version = "dev"
 type server struct {
 	store      *store.Store
 	adminToken string
+	agentToken string
 }
 
 func main() {
@@ -36,7 +37,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	app := &server{store: s, adminToken: adminToken}
+	agentToken, err := s.EnsureEnrollmentToken(os.Getenv("TZ_AGENT_TOKEN"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	app := &server{store: s, adminToken: adminToken, agentToken: agentToken}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/", app.api)
 	mux.HandleFunc("/install.sh", installScript)
@@ -87,6 +92,8 @@ func (s *server) api(w http.ResponseWriter, r *http.Request) {
 	case path == "dashboard" && r.Method == http.MethodGet:
 		groups, nodes := s.store.Snapshot()
 		writeJSON(w, map[string]any{"groups": groups, "nodes": nodes, "serverTime": time.Now().UTC()})
+	case path == "install" && r.Method == http.MethodGet:
+		writeJSON(w, map[string]string{"agentToken": s.agentToken})
 	case path == "nodes" && r.Method == http.MethodPost:
 		var in struct {
 			Name, GroupID string
@@ -169,6 +176,8 @@ func (s *server) report(w http.ResponseWriter, r *http.Request) {
 	}
 	token := r.Header.Get("X-Agent-Token")
 	var in struct {
+		NodeID  string `json:"nodeId"`
+		Name    string `json:"name"`
 		Version string `json:"version"`
 		store.Metrics
 	}
@@ -182,12 +191,37 @@ func (s *server) report(w http.ResponseWriter, r *http.Request) {
 	if forwarded := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]); forwarded != "" {
 		host = forwarded
 	}
-	upgrade, err := s.store.Report(token, host, in.Version, in.Metrics)
+	var upgrade bool
+	if token == s.agentToken && validNodeID(in.NodeID) {
+		name := strings.TrimSpace(in.Name)
+		if name == "" {
+			name = "Linux 节点"
+		}
+		if len(name) > 60 {
+			name = name[:60]
+		}
+		upgrade, err = s.store.AutoReport(in.NodeID, name, host, in.Version, in.Metrics)
+	} else {
+		// Keep existing per-node tokens working during migration.
+		upgrade, err = s.store.Report(token, host, in.Version, in.Metrics)
+	}
 	if err != nil {
 		jsonError(w, "探针令牌无效", http.StatusUnauthorized)
 		return
 	}
 	writeJSON(w, map[string]any{"ok": true, "upgrade": upgrade})
+}
+
+func validNodeID(id string) bool {
+	if len(id) < 8 || len(id) > 128 {
+		return false
+	}
+	for _, r := range id {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '-' && r != '_' {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *server) authorized(r *http.Request) bool {

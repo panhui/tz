@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -42,6 +44,8 @@ type netSample struct {
 func main() {
 	panel := flag.String("url", os.Getenv("TZ_PANEL_URL"), "面板地址")
 	token := flag.String("token", os.Getenv("TZ_AGENT_TOKEN"), "探针令牌")
+	nodeID := flag.String("id", os.Getenv("TZ_NODE_ID"), "节点唯一 ID")
+	nodeName := flag.String("name", os.Getenv("TZ_NODE_NAME"), "节点名称")
 	interval := flag.Duration("interval", 3*time.Second, "上报间隔")
 	showVersion := flag.Bool("version", false, "显示版本")
 	once := flag.Bool("once", false, "仅上报一次")
@@ -53,6 +57,12 @@ func main() {
 	if *panel == "" || *token == "" {
 		log.Fatal("必须设置 --url 和 --token")
 	}
+	if *nodeID == "" {
+		*nodeID = defaultNodeID()
+	}
+	if *nodeName == "" {
+		*nodeName, _ = os.Hostname()
+	}
 	*panel = strings.TrimRight(*panel, "/")
 	client := &http.Client{Timeout: 10 * time.Second}
 	prevNet, _ := readNetwork()
@@ -61,7 +71,7 @@ func main() {
 		if err != nil {
 			log.Printf("采集失败：%v", err)
 		} else {
-			upgrade, err := report(client, *panel, *token, m)
+			upgrade, err := report(client, *panel, *token, *nodeID, *nodeName, m)
 			if err != nil {
 				log.Printf("上报失败：%v", err)
 			} else if upgrade {
@@ -199,11 +209,23 @@ func readUptime() uint64 {
 	return uint64(v)
 }
 
-func report(client *http.Client, panel, token string, m metrics) (bool, error) {
+func defaultNodeID() string {
+	b, err := os.ReadFile("/etc/machine-id")
+	if err != nil || len(bytes.TrimSpace(b)) == 0 {
+		host, _ := os.Hostname()
+		b = []byte(host)
+	}
+	sum := sha256.Sum256(bytes.TrimSpace(b))
+	return hex.EncodeToString(sum[:16])
+}
+
+func report(client *http.Client, panel, token, nodeID, nodeName string, m metrics) (bool, error) {
 	payload := struct {
+		NodeID  string `json:"nodeId"`
+		Name    string `json:"name"`
 		Version string `json:"version"`
 		metrics
-	}{version, m}
+	}{nodeID, nodeName, version, m}
 	b, _ := json.Marshal(payload)
 	req, _ := http.NewRequest(http.MethodPost, panel+"/api/report", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")

@@ -19,6 +19,9 @@ if ! [[ "$PORT" =~ ^[0-9]+$ ]] || (( PORT < 1 || PORT > 65535 )); then
   echo "端口必须是 1-65535 之间的数字。" >&2
   exit 1
 fi
+if [[ -z "$ADMIN_TOKEN" && -f /etc/tz-panel.env ]]; then
+  ADMIN_TOKEN="$(sed -n 's/^TZ_ADMIN_TOKEN=//p' /etc/tz-panel.env | head -n1)"
+fi
 if [[ -z "$ADMIN_TOKEN" ]]; then
   ADMIN_TOKEN="tz-$(od -An -N18 -tx1 /dev/urandom | tr -d ' \n')"
 elif ! [[ "$ADMIN_TOKEN" =~ ^[A-Za-z0-9._-]{12,128}$ ]]; then

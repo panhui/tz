@@ -45,8 +45,23 @@ type Group struct {
 }
 
 type data struct {
-	Groups []Group `json:"groups"`
-	Nodes  []Node  `json:"nodes"`
+	EnrollmentToken string  `json:"enrollmentToken"`
+	Groups          []Group `json:"groups"`
+	Nodes           []Node  `json:"nodes"`
+}
+
+// EnsureEnrollmentToken returns the shared token used by all new agents. The
+// token is stored with panel data so it remains stable across restarts.
+func (s *Store) EnsureEnrollmentToken(configured string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if configured != "" {
+		s.data.EnrollmentToken = configured
+	}
+	if s.data.EnrollmentToken == "" {
+		s.data.EnrollmentToken = token(24)
+	}
+	return s.data.EnrollmentToken, s.saveLocked()
 }
 
 type Store struct {
@@ -192,6 +207,28 @@ func (s *Store) Report(agentToken, ip, version string, metrics Metrics) (bool, e
 		}
 	}
 	return false, os.ErrNotExist
+}
+
+// AutoReport updates an automatically enrolled node, creating it on the first
+// heartbeat. Its display name is only initialized once so dashboard edits win.
+func (s *Store) AutoReport(nodeID, name, ip, version string, metrics Metrics) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.data.Nodes {
+		n := &s.data.Nodes[i]
+		if n.ID == nodeID {
+			if n.Name == "" {
+				n.Name = name
+			}
+			n.IP, n.Version, n.LastSeen, n.Metrics = ip, version, time.Now().UTC(), metrics
+			upgrade := n.UpgradeRequested
+			n.UpgradeRequested = false
+			return upgrade, s.saveLocked()
+		}
+	}
+	n := Node{ID: nodeID, Name: name, Sort: len(s.data.Nodes), IP: ip, Version: version, LastSeen: time.Now().UTC(), Metrics: metrics}
+	s.data.Nodes = append(s.data.Nodes, n)
+	return false, s.saveLocked()
 }
 
 func (s *Store) RequestUpgrade(id string) error {

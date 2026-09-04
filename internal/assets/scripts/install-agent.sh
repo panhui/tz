@@ -38,9 +38,20 @@ chmod 0755 "$TMP_FILE"
 install -m 0755 "$TMP_FILE" /usr/local/bin/.tz-agent.new
 mv -f /usr/local/bin/.tz-agent.new /usr/local/bin/tz-agent
 
+NODE_ID=""
+if [[ -f /etc/tz-agent.env ]]; then
+  NODE_ID="$(sed -n 's/^TZ_NODE_ID=//p' /etc/tz-agent.env | head -n1)"
+fi
+if [[ -z "$NODE_ID" ]]; then
+  NODE_ID="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+fi
+NODE_NAME="$(hostname)"
+
 cat >/etc/tz-agent.env <<EOF
 TZ_PANEL_URL=${PANEL_URL}
 TZ_AGENT_TOKEN=${AGENT_TOKEN}
+TZ_NODE_ID=${NODE_ID}
+TZ_NODE_NAME=${NODE_NAME}
 EOF
 chmod 0600 /etc/tz-agent.env
 cat >/etc/systemd/system/tz-agent.service <<'EOF'
@@ -64,5 +75,6 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable --now tz-agent
+systemctl enable tz-agent
+systemctl restart tz-agent
 if [[ "$UPGRADE" == "true" ]]; then echo "TZ Agent 已升级并重启。"; else echo "TZ Agent 安装完成。"; fi
