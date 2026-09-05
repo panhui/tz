@@ -36,6 +36,9 @@ type Node struct {
 	Version          string    `json:"version"`
 	LastSeen         time.Time `json:"lastSeen"`
 	UpgradeRequested bool      `json:"upgradeRequested,omitempty"`
+	TrafficDate      string    `json:"trafficDate"`
+	TodayUpload      uint64    `json:"todayUpload"`
+	TodayDownload    uint64    `json:"todayDownload"`
 	Metrics
 }
 
@@ -88,10 +91,11 @@ type Store struct {
 	mu   sync.RWMutex
 	path string
 	data data
+	now  func() time.Time
 }
 
 func Open(path string) (*Store, error) {
-	s := &Store{path: path, data: data{Groups: []Group{}, Nodes: []Node{}}}
+	s := &Store{path: path, data: data{Groups: []Group{}, Nodes: []Node{}}, now: time.Now}
 	b, err := os.ReadFile(path)
 	if err == nil {
 		if err := json.Unmarshal(b, &s.data); err != nil {
@@ -140,7 +144,12 @@ func (s *Store) Snapshot() ([]Group, []Node) {
 	defer s.mu.RUnlock()
 	groups := append([]Group{}, s.data.Groups...)
 	nodes := append([]Node{}, s.data.Nodes...)
+	today := s.now().In(trafficLocation).Format("2006-01-02")
 	for i := range nodes {
+		if nodes[i].TrafficDate != today {
+			nodes[i].TrafficDate = today
+			nodes[i].TodayUpload, nodes[i].TodayDownload = 0, 0
+		}
 		nodes[i].AgentToken = ""
 		nodes[i].UpgradeRequested = false
 		if len(nodes[i].GroupIDs) > 0 {
@@ -267,7 +276,7 @@ func (s *Store) Report(agentToken, ip, version string, metrics Metrics) (bool, e
 	for i := range s.data.Nodes {
 		n := &s.data.Nodes[i]
 		if n.AgentToken == agentToken {
-			n.IP, n.Version, n.LastSeen, n.Metrics = ip, version, time.Now().UTC(), metrics
+			n.applyReport(ip, version, metrics, s.now())
 			upgrade := n.UpgradeRequested
 			n.UpgradeRequested = false
 			return upgrade, s.saveLocked()
@@ -287,15 +296,59 @@ func (s *Store) AutoReport(nodeID, name, ip, version string, metrics Metrics) (b
 			if n.Name == "" {
 				n.Name = ip
 			}
-			n.IP, n.Version, n.LastSeen, n.Metrics = ip, version, time.Now().UTC(), metrics
+			n.applyReport(ip, version, metrics, s.now())
 			upgrade := n.UpgradeRequested
 			n.UpgradeRequested = false
 			return upgrade, s.saveLocked()
 		}
 	}
-	n := Node{ID: nodeID, Name: ip, GroupIDs: []string{}, Sort: 0, IP: ip, Version: version, LastSeen: time.Now().UTC(), Metrics: metrics}
+	n := Node{ID: nodeID, Name: ip, GroupIDs: []string{}, Sort: 0}
+	n.applyReport(ip, version, metrics, s.now())
 	s.data.Nodes = append(s.data.Nodes, n)
 	return false, s.saveLocked()
+}
+
+var trafficLocation = time.FixedZone("Asia/Shanghai", 8*60*60)
+
+// Daily traffic is calculated from counter deltas, never from the initial
+// lifetime counter. Persisted metrics are also the baseline after a restart.
+func (n *Node) applyReport(ip, version string, metrics Metrics, now time.Time) {
+	local := now.In(trafficLocation)
+	date := local.Format("2006-01-02")
+	initialized := n.TrafficDate != "" && !n.LastSeen.IsZero()
+	if n.TrafficDate != date {
+		n.TodayUpload, n.TodayDownload = 0, 0
+	}
+	if initialized && now.After(n.LastSeen) {
+		start := n.LastSeen
+		// Uptime also detects a reboot when new counters already exceed the old ones.
+		rebooted := metrics.Uptime < n.Uptime || (n.Uptime > 0 && metrics.Uptime > 0 &&
+			float64(metrics.Uptime)+5 < float64(n.Uptime)+now.Sub(n.LastSeen).Seconds())
+		if rebooted {
+			boot := now.Add(-time.Duration(metrics.Uptime) * time.Second)
+			if boot.After(start) {
+				start = boot
+			}
+		}
+		delta := func(current, previous uint64) uint64 {
+			if rebooted || current < previous {
+				return current
+			}
+			return current - previous
+		}
+		up, down := delta(metrics.TotalUpload, n.TotalUpload), delta(metrics.TotalDownload, n.TotalDownload)
+		midnight := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, trafficLocation)
+		if start.Before(midnight) {
+			// Reports cannot identify the exact time of each byte. Split intervals
+			// that cross midnight proportionally, including gaps while offline.
+			ratio := float64(now.Sub(midnight)) / float64(now.Sub(start))
+			up, down = uint64(float64(up)*ratio), uint64(float64(down)*ratio)
+		}
+		n.TodayUpload += up
+		n.TodayDownload += down
+	}
+	n.TrafficDate = date
+	n.IP, n.Version, n.LastSeen, n.Metrics = ip, version, now.UTC(), metrics
 }
 
 func contains(values []string, target string) bool {

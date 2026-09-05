@@ -9,7 +9,6 @@ RUN apk add --no-cache ca-certificates && addgroup -S tz && adduser -S -G tz tz
 COPY --from=build /tz-server /usr/local/bin/tz-server
 RUN mkdir -p /var/lib/tz && chown tz:tz /var/lib/tz
 USER tz
-EXPOSE 8080
+EXPOSE 876
 VOLUME ["/var/lib/tz"]
 ENTRYPOINT ["/usr/local/bin/tz-server"]
-

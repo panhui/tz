@@ -28,7 +28,7 @@ type server struct {
 }
 
 func main() {
-	addr := env("TZ_LISTEN", ":8080")
+	addr := env("TZ_LISTEN", ":876")
 	dataFile := env("TZ_DATA", "/var/lib/tz/data.json")
 	initialAdminToken := os.Getenv("TZ_ADMIN_TOKEN")
 	if initialAdminToken == "" {

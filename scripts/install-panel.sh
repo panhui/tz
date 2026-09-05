@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PORT="8080"
+PORT=""
 ADMIN_TOKEN=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -15,6 +15,10 @@ if [[ $EUID -ne 0 ]]; then
   echo "请使用 root 用户运行，或在命令前加 sudo。" >&2
   exit 1
 fi
+if [[ -z "$PORT" && -f /etc/tz-panel.env ]]; then
+  PORT="$(sed -n 's/^TZ_LISTEN=:\([0-9]*\)$/\1/p' /etc/tz-panel.env | head -n1)"
+fi
+PORT="${PORT:-876}"
 if ! [[ "$PORT" =~ ^[0-9]+$ ]] || (( PORT < 1 || PORT > 65535 )); then
   echo "端口必须是 1-65535 之间的数字。" >&2
   exit 1
@@ -71,6 +75,8 @@ ExecStart=/usr/local/bin/tz-panel
 Restart=always
 RestartSec=5
 NoNewPrivileges=true
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
