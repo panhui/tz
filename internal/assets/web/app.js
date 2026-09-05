@@ -33,7 +33,7 @@ function bytes(value, speed = false) {
 
 function megabits(value) {
   const mbps = value * 8 / 1000000;
-  return `${mbps.toFixed(mbps >= 100 ? 0 : mbps >= 10 ? 1 : 2)} Mbps/s`;
+  return `${mbps.toFixed(mbps >= 100 ? 0 : mbps >= 10 ? 1 : 2)} M/s`;
 }
 
 function uptime(value) {

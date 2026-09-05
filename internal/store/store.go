@@ -167,7 +167,7 @@ func (s *Store) Snapshot() ([]Group, []Node) {
 	sort.SliceStable(groups, func(i, j int) bool { return groups[i].Sort > groups[j].Sort })
 	sort.SliceStable(nodes, func(i, j int) bool {
 		if nodes[i].Sort == nodes[j].Sort {
-			return nodes[i].Name < nodes[j].Name
+			return false
 		}
 		return nodes[i].Sort > nodes[j].Sort
 	})

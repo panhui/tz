@@ -76,6 +76,28 @@ func TestEmptySnapshotUsesArrays(t *testing.T) {
 	}
 }
 
+func TestNewNodesStayAtBottomWhenSortIsEqual(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "data.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := s.CreateNode("z-existing", "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.CreateNode("a-new", "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AutoReport("auto-new-node", "", "192.0.2.3", "v1", Metrics{}); err != nil {
+		t.Fatal(err)
+	}
+	_, nodes := s.Snapshot()
+	if len(nodes) != 3 || nodes[0].ID != first.ID || nodes[1].ID != second.ID || nodes[2].ID != "auto-new-node" {
+		t.Fatalf("equal-sort nodes should retain insertion order: %#v", nodes)
+	}
+}
+
 func TestSharedEnrollmentAutoCreatesAndPreservesNode(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "data.json")
 	s, err := Open(path)
