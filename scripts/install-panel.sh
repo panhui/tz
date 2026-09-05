@@ -23,14 +23,11 @@ if ! [[ "$PORT" =~ ^[0-9]+$ ]] || (( PORT < 1 || PORT > 65535 )); then
   echo "端口必须是 1-65535 之间的数字。" >&2
   exit 1
 fi
+KEEP_TOKEN="false"
 if [[ -z "$ADMIN_TOKEN" && -f /etc/tz-panel.env ]]; then
-  ADMIN_TOKEN="$(sed -n 's/^TZ_ADMIN_TOKEN=//p' /etc/tz-panel.env | head -n1)"
-fi
-if [[ -z "$ADMIN_TOKEN" ]]; then
+  KEEP_TOKEN="true"
+elif [[ -z "$ADMIN_TOKEN" ]]; then
   ADMIN_TOKEN="tz-$(od -An -N18 -tx1 /dev/urandom | tr -d ' \n')"
-elif ! [[ "$ADMIN_TOKEN" =~ ^[A-Za-z0-9._-]{12,128}$ ]]; then
-  echo "管理令牌只能包含字母、数字、点、下划线和短横线，长度为 12-128。" >&2
-  exit 1
 fi
 
 case "$(uname -m)" in
@@ -51,12 +48,21 @@ if ! id tz-panel >/dev/null 2>&1; then
   useradd --system --home /var/lib/tz --shell /usr/sbin/nologin tz-panel
 fi
 install -d -o tz-panel -g tz-panel -m 0750 /var/lib/tz
-cat >/etc/tz-panel.env <<EOF
-TZ_ADMIN_TOKEN=${ADMIN_TOKEN}
+if [[ "$KEEP_TOKEN" == "true" ]]; then
+  sed -i "s/^TZ_LISTEN=.*/TZ_LISTEN=:${PORT}/" /etc/tz-panel.env
+else
+  ESCAPED_TOKEN="${ADMIN_TOKEN//\\/\\\\}"
+  ESCAPED_TOKEN="${ESCAPED_TOKEN//\"/\\\"}"
+  cat >/etc/tz-panel.env <<EOF
+TZ_ADMIN_TOKEN="${ESCAPED_TOKEN}"
 TZ_LISTEN=:${PORT}
 TZ_DATA=/var/lib/tz/data.json
 TZ_ENV_FILE=/etc/tz-panel.env
 EOF
+fi
+if ! grep -q '^TZ_ENV_FILE=' /etc/tz-panel.env; then
+  printf '%s\n' 'TZ_ENV_FILE=/etc/tz-panel.env' >>/etc/tz-panel.env
+fi
 chown tz-panel:tz-panel /etc/tz-panel.env
 chmod 0600 /etc/tz-panel.env
 
@@ -95,6 +101,6 @@ if [[ -z "$SERVER_IP" ]]; then SERVER_IP="服务器IP"; fi
 echo
 echo "TZ Panel 安装完成"
 echo "访问地址: http://${SERVER_IP}:${PORT}"
-echo "管理令牌: ${ADMIN_TOKEN}"
+echo "查看当前管理令牌: grep '^TZ_ADMIN_TOKEN=' /etc/tz-panel.env"
 echo
 echo "请保存管理令牌，并在防火墙中放行 TCP ${PORT} 端口。"

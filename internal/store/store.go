@@ -49,11 +49,19 @@ type Group struct {
 }
 
 type data struct {
-	EnrollmentToken string  `json:"enrollmentToken"`
-	AdminToken      string  `json:"adminToken"`
-	Groups          []Group `json:"groups"`
-	Nodes           []Node  `json:"nodes"`
+	EnrollmentToken string        `json:"enrollmentToken"`
+	AdminToken      string        `json:"adminToken"`
+	Groups          []Group       `json:"groups"`
+	Nodes           []Node        `json:"nodes"`
+	RemovedNodes    []RemovedNode `json:"removedNodes,omitempty"`
 }
+
+type RemovedNode struct {
+	ID         string `json:"id"`
+	AgentToken string `json:"agentToken,omitempty"`
+}
+
+var ErrRemovalPending = errors.New("agent removal pending")
 
 // EnsureAdminToken stores the initial token and returns the persisted token.
 // A token changed in the dashboard therefore survives service restarts.
@@ -196,8 +204,15 @@ func (s *Store) DeleteNode(id string) error {
 	defer s.mu.Unlock()
 	for i := range s.data.Nodes {
 		if s.data.Nodes[i].ID == id {
+			oldNodes := append([]Node{}, s.data.Nodes...)
+			oldRemoved := s.data.RemovedNodes
+			s.data.RemovedNodes = append(s.data.RemovedNodes, RemovedNode{ID: id, AgentToken: s.data.Nodes[i].AgentToken})
 			s.data.Nodes = append(s.data.Nodes[:i], s.data.Nodes[i+1:]...)
-			return s.saveLocked()
+			if err := s.saveLocked(); err != nil {
+				s.data.Nodes, s.data.RemovedNodes = oldNodes, oldRemoved
+				return err
+			}
+			return nil
 		}
 	}
 	return os.ErrNotExist
@@ -273,9 +288,14 @@ func (s *Store) DeleteGroup(id string) error {
 func (s *Store) Report(agentToken, ip, version string, metrics Metrics) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	for _, removed := range s.data.RemovedNodes {
+		if agentToken != "" && removed.AgentToken == agentToken {
+			return false, ErrRemovalPending
+		}
+	}
 	for i := range s.data.Nodes {
 		n := &s.data.Nodes[i]
-		if n.AgentToken == agentToken {
+		if agentToken != "" && n.AgentToken == agentToken {
 			n.applyReport(ip, version, metrics, s.now())
 			upgrade := n.UpgradeRequested
 			n.UpgradeRequested = false
@@ -290,6 +310,11 @@ func (s *Store) Report(agentToken, ip, version string, metrics Metrics) (bool, e
 func (s *Store) AutoReport(nodeID, name, ip, version string, metrics Metrics) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	for _, removed := range s.data.RemovedNodes {
+		if removed.ID == nodeID {
+			return false, ErrRemovalPending
+		}
+	}
 	for i := range s.data.Nodes {
 		n := &s.data.Nodes[i]
 		if n.ID == nodeID {

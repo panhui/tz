@@ -7,7 +7,7 @@ const state = {
 async function api(path, options = {}) {
   const response = await fetch(`/api/${path}`, {
     ...options,
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${state.token}`, ...options.headers },
+    headers: { "Content-Type": "application/json", "X-TZ-Admin-Token": btoa(Array.from(new TextEncoder().encode(state.token), (byte) => String.fromCharCode(byte)).join("")), ...options.headers },
   });
   const body = await response.json().catch(() => ({}));
   if (response.status === 401) {
@@ -55,26 +55,34 @@ function toast(message) {
 }
 
 async function load() {
+	if (state.loading) return;
+	state.loading = true;
   try {
     const dashboard = await api("dashboard");
     state.groups = dashboard.groups; state.nodes = dashboard.nodes;
     $("#syncStatus").classList.remove("error"); $("#syncStatus").lastChild.textContent = " 已同步";
     render();
   } catch (error) { if (error.status !== 401) toast(error.message); }
+  finally { state.loading = false; }
 }
 
 function render() {
-  const active = state.nodes.filter(online);
+  const scoped = state.nodes.filter((node) => !state.group || groupIDs(node).includes(state.group));
+  const active = scoped.filter(online);
   const uploadSpeed = active.reduce((sum, node) => sum + node.uploadSpeed, 0);
   const downloadSpeed = active.reduce((sum, node) => sum + node.downloadSpeed, 0);
-  const totalUpload = state.nodes.reduce((sum, node) => sum + node.totalUpload, 0);
-  const totalDownload = state.nodes.reduce((sum, node) => sum + node.totalDownload, 0);
+  const totalUpload = scoped.reduce((sum, node) => sum + node.totalUpload, 0);
+  const totalDownload = scoped.reduce((sum, node) => sum + node.totalDownload, 0);
   $("#sumUpSpeed").textContent = megabits(uploadSpeed); $("#sumDownSpeed").textContent = megabits(downloadSpeed);
   $("#sumTraffic").textContent = bytes(totalUpload + totalDownload);
   $("#sumTrafficSub").textContent = `上传 ${bytes(totalUpload)} · 下载 ${bytes(totalDownload)}`;
-  $("#sumTodayUpload").textContent = bytes(state.nodes.reduce((sum, node) => sum + (node.todayUpload || 0), 0));
-  $("#sumTodayDownload").textContent = bytes(state.nodes.reduce((sum, node) => sum + (node.todayDownload || 0), 0));
-  $("#overviewMeta").textContent = `${active.length} 台在线 · ${state.nodes.length - active.length} 台离线 · 每 3 秒刷新`;
+  $("#sumTodayUpload").textContent = bytes(scoped.reduce((sum, node) => sum + (node.todayUpload || 0), 0));
+  $("#sumTodayDownload").textContent = bytes(scoped.reduce((sum, node) => sum + (node.todayDownload || 0), 0));
+  $("#overviewMeta").textContent = `${active.length} 台在线 · ${scoped.length - active.length} 台离线 · 每 3 秒刷新`;
+  $("#overviewScope").textContent = state.group ? "当前分组" : "全局概览";
+  $("#overviewTitle").textContent = state.groups.find((group) => group.id === state.group)?.name || "所有节点，尽在掌握";
+  document.querySelectorAll(".speed-scope").forEach((element) => { element.textContent = state.group ? "当前分组在线节点" : "所有在线节点"; });
+  document.querySelectorAll(".daily-scope").forEach((element) => { element.textContent = state.group ? "北京时间 · 当前分组" : "北京时间 · 全部节点"; });
   renderGroups(); renderNodes();
 }
 
@@ -156,8 +164,8 @@ function setupServerPicker() {
 const editNode = (id) => openEntityForm("node", state.nodes.find((node) => node.id === id));
 async function deleteNode(id) {
   const node = state.nodes.find((item) => item.id === id);
-  if (!confirm(`确定删除“${node.name}”？如果探针仍在运行，节点会自动重新加入。`)) return;
-  try { await api(`nodes/${id}`, { method: "DELETE" }); await load(); toast("服务器已删除"); }
+  if (!confirm(`确定删除“${node.name}”并卸载这台服务器上的探针？离线节点将在重新上线后执行；旧版探针会先升级再卸载。`)) return;
+  try { await api(`nodes/${id}`, { method: "DELETE" }); await load(); toast("服务器已移除，卸载指令已排队，等待节点执行"); }
   catch (error) { if (error.status !== 401) toast(error.message); }
 }
 async function upgradeNode(id) {
@@ -177,18 +185,18 @@ async function deleteGroup(id) {
 function openToken(message = "") {
   if ($("#formDialog").open) return;
   $("#modalKicker").textContent = "安全验证"; $("#modalTitle").textContent = "管理令牌";
-  $("#formFields").innerHTML = `<div class="field"><label>管理令牌</label><input name="token" type="password" required autocomplete="current-password"><small style="display:block;color:${message ? "var(--danger)" : "var(--muted)"};margin-top:8px">${message || "与面板启动时的 TZ_ADMIN_TOKEN 保持一致"}</small></div>`;
-  $("#entityForm").onsubmit = (event) => { event.preventDefault(); state.token = new FormData(event.target).get("token").trim(); localStorage.setItem("tz-admin-token", state.token); $("#formDialog").close(); load(); };
+  $("#formFields").innerHTML = `<div class="field"><label>管理令牌</label><input name="token" type="password" required autocomplete="current-password"><small class="field-help">${escapeHTML(message || "填写当前管理令牌")}</small></div>`;
+  $("#entityForm").onsubmit = (event) => { event.preventDefault(); state.token = new FormData(event.target).get("token"); localStorage.setItem("tz-admin-token", state.token); $("#formDialog").close(); load(); };
   $("#formDialog").showModal(); setTimeout(() => $("#formFields input")?.focus(), 50);
 }
 
 function openChangeToken() {
   if ($("#formDialog").open) return;
   $("#modalKicker").textContent = "安全设置"; $("#modalTitle").textContent = "修改管理令牌";
-  $("#formFields").innerHTML = `<div class="field"><label>新管理令牌</label><input name="token" type="password" required minlength="12" maxlength="128" pattern="[A-Za-z0-9._-]{12,128}" autocomplete="new-password"></div><div class="field"><label>确认新令牌</label><input name="confirmToken" type="password" required minlength="12" maxlength="128" pattern="[A-Za-z0-9._-]{12,128}" autocomplete="new-password"></div><small class="field-help">使用 12-128 位字母、数字、点、下划线或短横线。修改后其他浏览器需重新登录。</small>`;
+  $("#formFields").innerHTML = `<div class="field"><label>新管理令牌</label><input name="token" type="password" required autocomplete="new-password"></div><div class="field"><label>确认新令牌</label><input name="confirmToken" type="password" required autocomplete="new-password"></div><small class="field-help">令牌不设长度和复杂度要求，填写非空内容即可。修改后其他浏览器需重新登录。</small>`;
   $("#entityForm").onsubmit = async (event) => {
-    event.preventDefault(); const form = new FormData(event.target), token = form.get("token").trim();
-    if (token !== form.get("confirmToken").trim()) { toast("两次输入的令牌不一致"); return; }
+    event.preventDefault(); const form = new FormData(event.target), token = form.get("token");
+    if (token !== form.get("confirmToken")) { toast("两次输入的令牌不一致"); return; }
     try {
       await api("admin-token", { method: "PUT", body: JSON.stringify({ token }) });
       state.token = token; localStorage.setItem("tz-admin-token", token); $("#formDialog").close(); toast("管理令牌已修改");
@@ -226,6 +234,7 @@ function registerWebMCP() {
   register({ name: "get_agent_install_command", title: "获取探针命令", description: "获取可在所有 Linux 节点重复使用的探针安装和卸载命令。", inputSchema: { type: "object", properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: false }, execute: async () => { const config = await api("install"); return { installCommand: `curl -fsSL ${location.origin}/install.sh | bash -s -- --url ${location.origin} --token ${config.agentToken}`, uninstallCommand: `curl -fsSL ${location.origin}/uninstall.sh | bash` }; } });
 }
 
+document.querySelectorAll("[data-close-form]").forEach((button) => { button.onclick = () => $("#formDialog").close(); });
 $("#installAgentBtn").onclick = openInstallCommand; $("#emptyInstallBtn").onclick = openInstallCommand;
 $("#addGroupBtn").onclick = () => openEntityForm("group"); $("#tokenBtn").onclick = () => state.token ? openChangeToken() : openToken();
 $("#search").oninput = (event) => { state.query = event.target.value.trim().toLowerCase(); renderNodes(); };

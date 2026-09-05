@@ -2,14 +2,17 @@ package main
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -119,9 +122,8 @@ func (s *server) api(w http.ResponseWriter, r *http.Request) {
 		if !decode(w, r, &in) {
 			return
 		}
-		in.Token = strings.TrimSpace(in.Token)
 		if !validAdminToken(in.Token) {
-			jsonError(w, "管理令牌需为 12-128 位，只能包含字母、数字、点、下划线和短横线", http.StatusBadRequest)
+			jsonError(w, "管理令牌不能为空", http.StatusBadRequest)
 			return
 		}
 		if err := s.store.SetAdminToken(in.Token); err != nil {
@@ -227,9 +229,10 @@ func (s *server) report(w http.ResponseWriter, r *http.Request) {
 	}
 	token := r.Header.Get("X-Agent-Token")
 	var in struct {
-		NodeID  string `json:"nodeId"`
-		Name    string `json:"name"`
-		Version string `json:"version"`
+		NodeID             string `json:"nodeId"`
+		Name               string `json:"name"`
+		Version            string `json:"version"`
+		UninstallSupported bool   `json:"uninstallSupported"`
 		store.Metrics
 	}
 	if !decode(w, r, &in) {
@@ -256,6 +259,10 @@ func (s *server) report(w http.ResponseWriter, r *http.Request) {
 		// Keep existing per-node tokens working during migration.
 		upgrade, err = s.store.Report(token, host, in.Version, in.Metrics)
 	}
+	if errors.Is(err, store.ErrRemovalPending) {
+		writeJSON(w, map[string]any{"ok": true, "uninstall": in.UninstallSupported, "upgrade": !in.UninstallSupported})
+		return
+	}
 	if err != nil {
 		jsonError(w, "探针令牌无效", http.StatusUnauthorized)
 		return
@@ -276,21 +283,17 @@ func validNodeID(id string) bool {
 }
 
 func validAdminToken(value string) bool {
-	if len(value) < 12 || len(value) > 128 {
-		return false
-	}
-	for _, r := range value {
-		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '.' && r != '_' && r != '-' {
-			return false
-		}
-	}
-	return true
+	return value != ""
 }
 
 func (s *server) authorized(r *http.Request) bool {
 	s.tokenMu.RLock()
 	defer s.tokenMu.RUnlock()
-	return strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ") == s.adminToken
+	if encoded := r.Header.Get("X-TZ-Admin-Token"); encoded != "" {
+		decoded, err := base64.StdEncoding.DecodeString(encoded)
+		return err == nil && s.adminToken != "" && string(decoded) == s.adminToken
+	}
+	return s.adminToken != "" && strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ") == s.adminToken
 }
 
 func (s *server) setAdminToken(value string) {
@@ -307,19 +310,23 @@ func persistAdminTokenEnv(path, token string) error {
 	if err != nil {
 		return err
 	}
-	lines := strings.Split(strings.TrimRight(string(b), "\n"), "\n")
+	assignment := regexp.MustCompile(`(?m)^TZ_ADMIN_TOKEN=(?:"(?:\\[\s\S]|[^"\\])*"[^\n]*|[^\n]*)(?:\n|$)`)
 	found := false
-	for i := range lines {
-		if strings.HasPrefix(lines[i], "TZ_ADMIN_TOKEN=") {
-			lines[i] = "TZ_ADMIN_TOKEN=" + token
-			found = true
-			break
+	content := assignment.ReplaceAllStringFunc(string(b), func(string) string {
+		if found {
+			return ""
 		}
-	}
+		found = true
+		return "TZ_ADMIN_TOKEN=" + quoteEnvToken(token) + "\n"
+	})
 	if !found {
-		lines = append(lines, "TZ_ADMIN_TOKEN="+token)
+		content = strings.TrimRight(content, "\n") + "\nTZ_ADMIN_TOKEN=" + quoteEnvToken(token) + "\n"
 	}
-	return os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0600)
+	return os.WriteFile(path, []byte(content), 0600)
+}
+
+func quoteEnvToken(token string) string {
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, `$`, `\$`, "`", "\\`").Replace(token) + `"`
 }
 
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {

@@ -18,6 +18,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/panhui/tz/internal/assets"
 )
 
 var version = "dev"
@@ -66,15 +68,21 @@ func main() {
 	*panel = strings.TrimRight(*panel, "/")
 	client := &http.Client{Timeout: 10 * time.Second}
 	prevNet, _ := readNetwork()
+	var lastUpgrade time.Time
 	for {
 		m, currentNet, err := collect(prevNet)
 		if err != nil {
 			log.Printf("采集失败：%v", err)
 		} else {
-			upgrade, err := report(client, *panel, *token, *nodeID, *nodeName, m)
+			commands, err := report(client, *panel, *token, *nodeID, *nodeName, m)
 			if err != nil {
 				log.Printf("上报失败：%v", err)
-			} else if upgrade {
+			} else if commands.Uninstall {
+				if err := selfUninstall(); err != nil {
+					log.Printf("安排卸载失败，将重试：%v", err)
+				}
+			} else if commands.Upgrade && time.Since(lastUpgrade) > time.Minute {
+				lastUpgrade = time.Now()
 				log.Printf("收到升级指令")
 				go selfUpgrade(*panel, *token)
 			}
@@ -219,31 +227,47 @@ func defaultNodeID() string {
 	return hex.EncodeToString(sum[:16])
 }
 
-func report(client *http.Client, panel, token, nodeID, nodeName string, m metrics) (bool, error) {
+type agentCommands struct {
+	Upgrade   bool `json:"upgrade"`
+	Uninstall bool `json:"uninstall"`
+}
+
+func report(client *http.Client, panel, token, nodeID, nodeName string, m metrics) (agentCommands, error) {
 	payload := struct {
-		NodeID  string `json:"nodeId"`
-		Name    string `json:"name"`
-		Version string `json:"version"`
+		NodeID             string `json:"nodeId"`
+		Name               string `json:"name"`
+		Version            string `json:"version"`
+		UninstallSupported bool   `json:"uninstallSupported"`
 		metrics
-	}{nodeID, nodeName, version, m}
+	}{nodeID, nodeName, version, true, m}
 	b, _ := json.Marshal(payload)
 	req, _ := http.NewRequest(http.MethodPost, panel+"/api/report", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Agent-Token", token)
 	resp, err := client.Do(req)
 	if err != nil {
-		return false, err
+		return agentCommands{}, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		text, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return false, fmt.Errorf("HTTP %d: %s", resp.StatusCode, text)
+		return agentCommands{}, fmt.Errorf("HTTP %d: %s", resp.StatusCode, text)
 	}
-	var out struct {
-		Upgrade bool `json:"upgrade"`
-	}
+	var out agentCommands
 	err = json.NewDecoder(resp.Body).Decode(&out)
-	return out.Upgrade, err
+	return out, err
+}
+
+// A separate systemd unit survives stopping tz-agent and completes cleanup.
+// The uninstall script is bundled locally, so execution needs no download.
+func selfUninstall() error {
+	script, err := assets.Files.ReadFile("scripts/uninstall-agent.sh")
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command("systemd-run", "--unit=tz-agent-uninstall", "--collect", "bash", "-c", string(script))
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	return cmd.Run()
 }
 
 func selfUpgrade(panel, token string) {

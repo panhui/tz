@@ -16,12 +16,12 @@
 
     <main>
       <section class="overview" aria-label="流量总览">
-        <div class="intro"><p>全局概览</p><h1>所有节点，尽在掌握</h1><span id="overviewMeta">等待节点上报数据</span></div>
-        <article class="stat lime"><div class="stat-icon">↑</div><div><span>当前上传</span><strong id="sumUpSpeed">—</strong><small>所有在线节点</small></div></article>
-        <article class="stat blue"><div class="stat-icon">↓</div><div><span>当前下载</span><strong id="sumDownSpeed">—</strong><small>所有在线节点</small></div></article>
+        <div class="intro"><p id="overviewScope">全局概览</p><h1 id="overviewTitle">所有节点，尽在掌握</h1><span id="overviewMeta">等待节点上报数据</span></div>
+        <article class="stat lime"><div class="stat-icon">↑</div><div><span>当前上传</span><strong id="sumUpSpeed">—</strong><small class="speed-scope">所有在线节点</small></div></article>
+        <article class="stat blue"><div class="stat-icon">↓</div><div><span>当前下载</span><strong id="sumDownSpeed">—</strong><small class="speed-scope">所有在线节点</small></div></article>
         <article class="stat violet"><div class="stat-icon">Σ</div><div><span>累计流量</span><strong id="sumTraffic">—</strong><small id="sumTrafficSub">上传 — · 下载 —</small></div></article>
-        <article class="stat lime"><div class="stat-icon">↑</div><div><span>今日上传总流量</span><strong id="sumTodayUpload">—</strong><small>北京时间 · 全部节点</small></div></article>
-        <article class="stat blue"><div class="stat-icon">↓</div><div><span>今日下载总流量</span><strong id="sumTodayDownload">—</strong><small>北京时间 · 全部节点</small></div></article>
+        <article class="stat lime"><div class="stat-icon">↑</div><div><span>今日上传总流量</span><strong id="sumTodayUpload">—</strong><small class="daily-scope">北京时间 · 全部节点</small></div></article>
+        <article class="stat blue"><div class="stat-icon">↓</div><div><span>今日下载总流量</span><strong id="sumTodayDownload">—</strong><small class="daily-scope">北京时间 · 全部节点</small></div></article>
       </section>
 
       <section class="workspace">
@@ -45,7 +45,7 @@
     </main>
   </div>
 
-  <dialog id="formDialog"><form method="dialog" id="entityForm"><div class="modal-head"><div><span id="modalKicker">服务器</span><h2 id="modalTitle">添加服务器</h2></div><button value="cancel" class="close" aria-label="关闭">×</button></div><div id="formFields"></div><div class="modal-actions"><button value="cancel" class="btn ghost">取消</button><button value="default" class="btn primary" id="saveBtn">保存</button></div></form></dialog>
+  <dialog id="formDialog"><form method="dialog" id="entityForm"><div class="modal-head"><div><span id="modalKicker">服务器</span><h2 id="modalTitle">添加服务器</h2></div><button type="button" data-close-form class="close" aria-label="关闭">×</button></div><div id="formFields"></div><div class="modal-actions"><button type="button" data-close-form class="btn ghost">取消</button><button value="default" class="btn primary" id="saveBtn">保存</button></div></form></dialog>
   <dialog id="commandDialog"><div class="command-card"><div class="success-mark">↓</div><span>探针命令</span><h2>安装或卸载探针</h2><p>在节点服务器以 root 用户执行。所有服务器共用同一条安装命令。</p><div class="command-block"><label>安装命令</label><div class="command"><code id="installCommand"></code><button id="copyInstallCommand" type="button">复制</button></div></div><div class="command-block"><label>卸载命令</label><div class="command"><code id="uninstallCommand"></code><button id="copyUninstallCommand" type="button">复制</button></div></div><button class="btn primary wide" id="commandDone">完成</button></div></dialog>
   <div id="toast" role="status"></div>
   <script src="/app.js"></script>

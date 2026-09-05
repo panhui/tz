@@ -20,7 +20,7 @@ func TestPersistAdminTokenEnv(t *testing.T) {
 		t.Fatal(err)
 	}
 	content := string(b)
-	if !strings.Contains(content, "TZ_ADMIN_TOKEN=new-token-123\n") || !strings.Contains(content, "TZ_LISTEN=:8080\n") {
+	if !strings.Contains(content, "TZ_ADMIN_TOKEN=\"new-token-123\"\n") || !strings.Contains(content, "TZ_LISTEN=:8080\n") {
 		t.Fatalf("unexpected environment file: %q", content)
 	}
 }
