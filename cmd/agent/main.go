@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -35,12 +36,15 @@ type metrics struct {
 	TotalUpload   uint64  `json:"totalUpload"`
 	TotalDownload uint64  `json:"totalDownload"`
 	Uptime        uint64  `json:"uptime"`
+	BootID        string  `json:"bootId,omitempty"`
+	NetworkSet    string  `json:"networkSet,omitempty"`
 }
 
 type cpuSample struct{ idle, total uint64 }
 type netSample struct {
-	tx, rx uint64
-	at     time.Time
+	tx, rx     uint64
+	at         time.Time
+	interfaces string
 }
 
 func main() {
@@ -112,14 +116,19 @@ func collect(prev netSample) (metrics, netSample, error) {
 	}
 	m.MemoryUsed, m.MemoryTotal, _ = readMemory()
 	m.DiskUsed, m.DiskTotal, _ = readDisk("/")
-	now, _ := readNetwork()
+	now, err := readNetwork()
+	if err != nil {
+		return m, prev, err
+	}
 	elapsed := now.at.Sub(prev.at).Seconds()
-	if elapsed > 0 && now.tx >= prev.tx && now.rx >= prev.rx {
+	if elapsed > 0 && now.interfaces == prev.interfaces && now.tx >= prev.tx && now.rx >= prev.rx {
 		m.UploadSpeed = uint64(float64(now.tx-prev.tx) / elapsed)
 		m.DownloadSpeed = uint64(float64(now.rx-prev.rx) / elapsed)
 	}
 	m.TotalUpload, m.TotalDownload = now.tx, now.rx
 	m.Uptime = readUptime()
+	boot, _ := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	m.BootID, m.NetworkSet = strings.TrimSpace(string(boot)), now.interfaces
 	return m, now, nil
 }
 
@@ -189,6 +198,7 @@ func readNetwork() (netSample, error) {
 	}
 	defer f.Close()
 	var rx, tx uint64
+	var interfaces []string
 	s := bufio.NewScanner(f)
 	for s.Scan() {
 		line := strings.TrimSpace(s.Text())
@@ -199,12 +209,21 @@ func readNetwork() (netSample, error) {
 		if len(parts) < 17 || parts[0] == "lo" {
 			continue
 		}
-		r, _ := strconv.ParseUint(parts[1], 10, 64)
-		t, _ := strconv.ParseUint(parts[9], 10, 64)
+		r, err := strconv.ParseUint(parts[1], 10, 64)
+		if err != nil {
+			return netSample{}, err
+		}
+		t, err := strconv.ParseUint(parts[9], 10, 64)
+		if err != nil {
+			return netSample{}, err
+		}
+		index, _ := os.ReadFile("/sys/class/net/" + parts[0] + "/ifindex")
+		interfaces = append(interfaces, parts[0]+":"+strings.TrimSpace(string(index)))
 		rx += r
 		tx += t
 	}
-	return netSample{tx: tx, rx: rx, at: time.Now()}, s.Err()
+	sort.Strings(interfaces)
+	return netSample{tx: tx, rx: rx, at: time.Now(), interfaces: strings.Join(interfaces, ",")}, s.Err()
 }
 
 func readUptime() uint64 {

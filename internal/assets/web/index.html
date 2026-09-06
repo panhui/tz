@@ -17,11 +17,9 @@
     <main>
       <section class="overview" aria-label="流量总览">
         <div class="intro"><p id="overviewScope">全局概览</p><h1 id="overviewTitle">所有节点，尽在掌握</h1><span id="overviewMeta">等待节点上报数据</span></div>
-        <article class="stat lime"><div class="stat-icon">↑</div><div><span>当前上传</span><strong id="sumUpSpeed">—</strong><small class="speed-scope">所有在线节点</small></div></article>
-        <article class="stat blue"><div class="stat-icon">↓</div><div><span>当前下载</span><strong id="sumDownSpeed">—</strong><small class="speed-scope">所有在线节点</small></div></article>
-        <article class="stat violet"><div class="stat-icon">Σ</div><div><span>累计流量</span><strong id="sumTraffic">—</strong><small id="sumTrafficSub">上传 — · 下载 —</small></div></article>
-        <article class="stat lime"><div class="stat-icon">↑</div><div><span>今日上传总流量</span><strong id="sumTodayUpload">—</strong><small class="daily-scope">北京时间 · 全部节点</small></div></article>
-        <article class="stat blue"><div class="stat-icon">↓</div><div><span>今日下载总流量</span><strong id="sumTodayDownload">—</strong><small class="daily-scope">北京时间 · 全部节点</small></div></article>
+        <article class="stat paired"><h2>实时速度</h2><div class="stat-pair"><div><span>↑ 上传速度</span><strong id="sumUpSpeed">—</strong></div><div><span>↓ 下载速度</span><strong id="sumDownSpeed">—</strong></div></div><small class="speed-scope">所有在线节点</small></article>
+        <article class="stat paired"><h2>今日流量</h2><div class="stat-pair"><div><span>↑ 今日上传总流量</span><strong id="sumTodayUpload">—</strong></div><div><span>↓ 今日下载总流量</span><strong id="sumTodayDownload">—</strong></div></div><small class="daily-scope">北京时间 · 全部节点</small></article>
+        <article class="stat paired"><h2>昨日流量</h2><div class="stat-pair"><div><span>↑ 昨日上传总流量</span><strong id="sumYesterdayUpload">—</strong></div><div><span>↓ 昨日下载总流量</span><strong id="sumYesterdayDownload">—</strong></div></div><small class="daily-scope">北京时间 · 全部节点</small></article>
       </section>
 
       <section class="workspace">

@@ -23,22 +23,29 @@ type Metrics struct {
 	TotalUpload   uint64  `json:"totalUpload"`
 	TotalDownload uint64  `json:"totalDownload"`
 	Uptime        uint64  `json:"uptime"`
+	BootID        string  `json:"bootId,omitempty"`
+	NetworkSet    string  `json:"networkSet,omitempty"`
 }
 
 type Node struct {
-	ID               string    `json:"id"`
-	Name             string    `json:"name"`
-	IP               string    `json:"ip"`
-	GroupIDs         []string  `json:"groupIds"`
-	GroupID          string    `json:"groupId,omitempty"` // legacy API compatibility
-	Sort             int       `json:"sort"`
-	AgentToken       string    `json:"agentToken,omitempty"`
-	Version          string    `json:"version"`
-	LastSeen         time.Time `json:"lastSeen"`
-	UpgradeRequested bool      `json:"upgradeRequested,omitempty"`
-	TrafficDate      string    `json:"trafficDate"`
-	TodayUpload      uint64    `json:"todayUpload"`
-	TodayDownload    uint64    `json:"todayDownload"`
+	ID                string    `json:"id"`
+	Name              string    `json:"name"`
+	IP                string    `json:"ip"`
+	GroupIDs          []string  `json:"groupIds"`
+	GroupID           string    `json:"groupId,omitempty"` // legacy API compatibility
+	Sort              int       `json:"sort"`
+	AgentToken        string    `json:"agentToken,omitempty"`
+	Version           string    `json:"version"`
+	LastSeen          time.Time `json:"lastSeen"`
+	UpgradeRequested  bool      `json:"upgradeRequested,omitempty"`
+	TrafficDate       string    `json:"trafficDate"`
+	TodayUpload       uint64    `json:"todayUpload"`
+	TodayDownload     uint64    `json:"todayDownload"`
+	YesterdayUpload   uint64    `json:"yesterdayUpload"`
+	YesterdayDownload uint64    `json:"yesterdayDownload"`
+	UploadBaseline    uint64    `json:"uploadBaseline"`
+	DownloadBaseline  uint64    `json:"downloadBaseline"`
+	BaselineReady     bool      `json:"baselineReady"`
 	Metrics
 }
 
@@ -152,12 +159,9 @@ func (s *Store) Snapshot() ([]Group, []Node) {
 	defer s.mu.RUnlock()
 	groups := append([]Group{}, s.data.Groups...)
 	nodes := append([]Node{}, s.data.Nodes...)
-	today := s.now().In(trafficLocation).Format("2006-01-02")
+	now := s.now()
 	for i := range nodes {
-		if nodes[i].TrafficDate != today {
-			nodes[i].TrafficDate = today
-			nodes[i].TodayUpload, nodes[i].TodayDownload = 0, 0
-		}
+		nodes[i].rollTrafficDay(now)
 		nodes[i].AgentToken = ""
 		nodes[i].UpgradeRequested = false
 		if len(nodes[i].GroupIDs) > 0 {
@@ -335,44 +339,77 @@ func (s *Store) AutoReport(nodeID, name, ip, version string, metrics Metrics) (b
 
 var trafficLocation = time.FixedZone("Asia/Shanghai", 8*60*60)
 
-// Daily traffic is calculated from counter deltas, never from the initial
-// lifetime counter. Persisted metrics are also the baseline after a restart.
-func (n *Node) applyReport(ip, version string, metrics Metrics, now time.Time) {
+// rollTrafficDay also runs on snapshot copies so offline nodes roll over.
+func (n *Node) rollTrafficDay(now time.Time) {
 	local := now.In(trafficLocation)
 	date := local.Format("2006-01-02")
-	initialized := n.TrafficDate != "" && !n.LastSeen.IsZero()
-	if n.TrafficDate != date {
-		n.TodayUpload, n.TodayDownload = 0, 0
+	if n.TrafficDate == date {
+		return
 	}
-	if initialized && now.After(n.LastSeen) {
-		start := n.LastSeen
-		// Uptime also detects a reboot when new counters already exceed the old ones.
-		rebooted := metrics.Uptime < n.Uptime || (n.Uptime > 0 && metrics.Uptime > 0 &&
-			float64(metrics.Uptime)+5 < float64(n.Uptime)+now.Sub(n.LastSeen).Seconds())
-		if rebooted {
-			boot := now.Add(-time.Duration(metrics.Uptime) * time.Second)
-			if boot.After(start) {
-				start = boot
-			}
-		}
-		delta := func(current, previous uint64) uint64 {
-			if rebooted || current < previous {
-				return current
-			}
-			return current - previous
-		}
-		up, down := delta(metrics.TotalUpload, n.TotalUpload), delta(metrics.TotalDownload, n.TotalDownload)
-		midnight := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, trafficLocation)
-		if start.Before(midnight) {
-			// Reports cannot identify the exact time of each byte. Split intervals
-			// that cross midnight proportionally, including gaps while offline.
-			ratio := float64(now.Sub(midnight)) / float64(now.Sub(start))
-			up, down = uint64(float64(up)*ratio), uint64(float64(down)*ratio)
-		}
-		n.TodayUpload += up
-		n.TodayDownload += down
+	n.YesterdayUpload, n.YesterdayDownload = 0, 0
+	if n.TrafficDate == local.AddDate(0, 0, -1).Format("2006-01-02") {
+		n.YesterdayUpload, n.YesterdayDownload = n.TodayUpload, n.TodayDownload
 	}
+	n.TodayUpload, n.TodayDownload = 0, 0
 	n.TrafficDate = date
+}
+
+// Counter high-water marks prevent temporary drops or failed samples from
+// counting the old lifetime total a second time when counters recover.
+func (n *Node) applyReport(ip, version string, metrics Metrics, now time.Time) {
+	initialized := n.TrafficDate != "" && !n.LastSeen.IsZero()
+	n.rollTrafficDay(now)
+	if !n.BaselineReady {
+		n.UploadBaseline, n.DownloadBaseline = n.TotalUpload, n.TotalDownload
+	}
+	reset := !initialized ||
+		(metrics.BootID != "" && metrics.BootID != n.BootID) ||
+		(metrics.NetworkSet != "" && metrics.NetworkSet != n.NetworkSet)
+	// Older agents have no boot ID. Only an actual decrease in uptime is used,
+	// never the difference between network arrival time and uptime.
+	if metrics.BootID == "" && metrics.Uptime > 0 && metrics.Uptime < n.Uptime {
+		reset = true
+	}
+	if reset {
+		n.UploadBaseline, n.DownloadBaseline = metrics.TotalUpload, metrics.TotalDownload
+	} else if now.After(n.LastSeen) {
+		delta := func(current uint64, baseline *uint64) uint64 {
+			if current <= *baseline {
+				return 0
+			}
+			d := current - *baseline
+			*baseline = current
+			return d
+		}
+		up, down := delta(metrics.TotalUpload, &n.UploadBaseline), delta(metrics.TotalDownload, &n.DownloadBaseline)
+		local := now.In(trafficLocation)
+		midnight := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, trafficLocation)
+		yesterday := midnight.AddDate(0, 0, -1)
+		portion := func(value uint64, from, to time.Time) uint64 {
+			if from.Before(n.LastSeen) {
+				from = n.LastSeen
+			}
+			if to.After(now) {
+				to = now
+			}
+			if !to.After(from) {
+				return 0
+			}
+			if from.Equal(n.LastSeen) && to.Equal(now) {
+				return value
+			}
+			return uint64(float64(value) * (float64(to.Sub(from)) / float64(now.Sub(n.LastSeen))))
+		}
+		n.TodayUpload += portion(up, midnight, now)
+		n.TodayDownload += portion(down, midnight, now)
+		n.YesterdayUpload += portion(up, yesterday, midnight)
+		n.YesterdayDownload += portion(down, yesterday, midnight)
+	}
+	n.BaselineReady = true
+	// A failed uptime read must not destroy a valid legacy reboot baseline.
+	if metrics.Uptime == 0 && !reset {
+		metrics.Uptime = n.Uptime
+	}
 	n.IP, n.Version, n.LastSeen, n.Metrics = ip, version, now.UTC(), metrics
 }
 

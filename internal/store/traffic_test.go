@@ -50,14 +50,104 @@ func TestDailyTraffic(t *testing.T) {
 	// A reboot does not underflow counters or erase traffic already recorded.
 	now = now.Add(3 * time.Second)
 	report(20, 40, 2)
-	check(120, 340, "2026-09-06")
+	check(100, 300, "2026-09-06")
 	now = now.Add(3 * time.Second)
 	report(30, 60, 5)
-	check(130, 360, "2026-09-06")
+	check(110, 320, "2026-09-06")
 	// Counter reset without a reboot (for example, an interface reset).
 	now = now.Add(3 * time.Second)
 	report(5, 10, 8)
-	check(135, 370, "2026-09-06")
+	check(110, 320, "2026-09-06")
+	_, nodes := s.Snapshot()
+	if nodes[0].YesterdayUpload != 200 || nodes[0].YesterdayDownload != 700 {
+		t.Fatalf("incorrect yesterday totals: %+v", nodes[0])
+	}
+}
+
+func TestDelayedReportsAndTemporaryCounterDropsDoNotInflateTraffic(t *testing.T) {
+	now := time.Date(2026, 9, 6, 12, 0, 0, 0, trafficLocation)
+	n := Node{}
+	const lifetime = uint64(1 << 40)
+	n.applyReport("", "", Metrics{TotalUpload: lifetime, TotalDownload: lifetime, Uptime: 10000}, now)
+	now = now.Add(30 * time.Second)
+	n.applyReport("", "", Metrics{TotalUpload: lifetime + 100, TotalDownload: lifetime + 200, Uptime: 10003}, now)
+	if n.TodayUpload != 100 || n.TodayDownload != 200 {
+		t.Fatal("arrival delay inflated traffic")
+	}
+	now = now.Add(3 * time.Second)
+	n.applyReport("", "", Metrics{}, now)
+	now = now.Add(3 * time.Second)
+	n.applyReport("", "", Metrics{TotalUpload: lifetime + 200, TotalDownload: lifetime + 400, Uptime: 10009}, now)
+	if n.TodayUpload != 200 || n.TodayDownload != 400 {
+		t.Fatal("zero sample recovery inflated traffic")
+	}
+	now = now.Add(3 * time.Second)
+	n.applyReport("", "", Metrics{TotalUpload: lifetime - 500, TotalDownload: lifetime - 1000, Uptime: 10012}, now)
+	now = now.Add(3 * time.Second)
+	n.applyReport("", "", Metrics{TotalUpload: lifetime + 300, TotalDownload: lifetime + 600, Uptime: 10015}, now)
+	if n.TodayUpload != 300 || n.TodayDownload != 600 {
+		t.Fatal("counter dip recovery inflated traffic")
+	}
+}
+
+func TestBootAndInterfaceChangesRebaseline(t *testing.T) {
+	now := time.Now()
+	n := Node{}
+	m := Metrics{BootID: "boot-a", NetworkSet: "eth0", TotalUpload: 1000, TotalDownload: 2000, Uptime: 100}
+	n.applyReport("", "", m, now)
+	now = now.Add(3 * time.Second)
+	m.TotalUpload += 100
+	m.TotalDownload += 200
+	n.applyReport("", "", m, now)
+	now = now.Add(3 * time.Second)
+	m.NetworkSet = "eth0,eth1"
+	m.TotalUpload += 1 << 40
+	m.TotalDownload += 1 << 40
+	n.applyReport("", "", m, now)
+	now = now.Add(3 * time.Second)
+	m.BootID = "boot-b"
+	m.TotalUpload = 500
+	m.TotalDownload = 900
+	n.applyReport("", "", m, now)
+	now = now.Add(3 * time.Second)
+	m.TotalUpload += 10
+	m.TotalDownload += 20
+	n.applyReport("", "", m, now)
+	if n.TodayUpload != 110 || n.TodayDownload != 220 {
+		t.Fatal("boot or interface change counted lifetime counters")
+	}
+}
+
+func TestYesterdaySurvivesRestartAndOfflineRollover(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.json")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 9, 6, 12, 0, 0, 0, trafficLocation)
+	s.now = func() time.Time { return now }
+	if _, err = s.AutoReport("yesterday-node", "", "", "", Metrics{TotalUpload: 100, TotalDownload: 200}); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Second)
+	if _, err = s.AutoReport("yesterday-node", "", "", "", Metrics{TotalUpload: 300, TotalDownload: 600}); err != nil {
+		t.Fatal(err)
+	}
+	s, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.now = func() time.Time { return now }
+	now = now.AddDate(0, 0, 1)
+	_, nodes := s.Snapshot()
+	if nodes[0].YesterdayUpload != 200 || nodes[0].YesterdayDownload != 400 || nodes[0].TodayUpload != 0 {
+		t.Fatal("offline rollover lost yesterday totals")
+	}
+	now = now.AddDate(0, 0, 1)
+	_, nodes = s.Snapshot()
+	if nodes[0].YesterdayUpload != 0 || nodes[0].YesterdayDownload != 0 {
+		t.Fatal("stale yesterday totals survived two days")
+	}
 }
 
 func TestDailyTrafficLegacyTokenAndMigration(t *testing.T) {
