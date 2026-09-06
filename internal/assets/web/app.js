@@ -76,15 +76,16 @@ function render() {
   const active = scoped.filter(online);
   const uploadSpeed = active.reduce((sum, node) => sum + node.uploadSpeed, 0);
   const downloadSpeed = active.reduce((sum, node) => sum + node.downloadSpeed, 0);
+  const totalUpload = scoped.reduce((sum, node) => sum + (node.totalUpload || 0), 0);
+  const totalDownload = scoped.reduce((sum, node) => sum + (node.totalDownload || 0), 0);
   $("#sumUpSpeed").textContent = megabits(uploadSpeed); $("#sumDownSpeed").textContent = megabits(downloadSpeed);
+  $("#sumTrafficSub").textContent = `上传总流量 ${bytes(totalUpload)} · 下载总流量 ${bytes(totalDownload)}`;
   $("#sumTodayUpload").textContent = bytes(scoped.reduce((sum, node) => sum + (node.todayUpload || 0), 0));
   $("#sumTodayDownload").textContent = bytes(scoped.reduce((sum, node) => sum + (node.todayDownload || 0), 0));
   $("#sumYesterdayUpload").textContent = bytes(scoped.reduce((sum, node) => sum + (node.yesterdayUpload || 0), 0));
   $("#sumYesterdayDownload").textContent = bytes(scoped.reduce((sum, node) => sum + (node.yesterdayDownload || 0), 0));
-  $("#overviewMeta").textContent = `${active.length} 台在线 · ${scoped.length - active.length} 台离线 · 每 3 秒刷新`;
-  $("#overviewScope").textContent = state.group ? "当前分组" : "全局概览";
-  $("#overviewTitle").textContent = state.groups.find((group) => group.id === state.group)?.name || "所有节点，尽在掌握";
-  document.querySelectorAll(".speed-scope").forEach((element) => { element.textContent = state.group ? "当前分组在线节点" : "所有在线节点"; });
+  $("#onlineCount").textContent = active.length;
+  $("#offlineCount").textContent = scoped.length - active.length;
   document.querySelectorAll(".daily-scope").forEach((element) => { element.textContent = state.group ? "北京时间 · 当前分组" : "北京时间 · 全部节点"; });
   renderGroups(); renderNodes();
 }

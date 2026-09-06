@@ -16,8 +16,7 @@
 
     <main>
       <section class="overview" aria-label="流量总览">
-        <div class="intro"><p id="overviewScope">全局概览</p><h1 id="overviewTitle">所有节点，尽在掌握</h1><span id="overviewMeta">等待节点上报数据</span></div>
-        <article class="stat paired"><h2>实时速度</h2><div class="stat-pair"><div><span>↑ 上传速度</span><strong id="sumUpSpeed">—</strong></div><div><span>↓ 下载速度</span><strong id="sumDownSpeed">—</strong></div></div><small class="speed-scope">所有在线节点</small></article>
+        <article class="stat paired"><h2>实时速度</h2><div class="stat-pair"><div><span>↑ 上传速度</span><strong id="sumUpSpeed">—</strong></div><div><span>↓ 下载速度</span><strong id="sumDownSpeed">—</strong></div></div><small id="sumTrafficSub">上传总流量 — · 下载总流量 —</small></article>
         <article class="stat paired"><h2>今日流量</h2><div class="stat-pair"><div><span>↑ 今日上传总流量</span><strong id="sumTodayUpload">—</strong></div><div><span>↓ 今日下载总流量</span><strong id="sumTodayDownload">—</strong></div></div><small class="daily-scope">北京时间 · 全部节点</small></article>
         <article class="stat paired"><h2>昨日流量</h2><div class="stat-pair"><div><span>↑ 昨日上传总流量</span><strong id="sumYesterdayUpload">—</strong></div><div><span>↓ 昨日下载总流量</span><strong id="sumYesterdayDownload">—</strong></div></div><small class="daily-scope">北京时间 · 全部节点</small></article>
       </section>
@@ -26,7 +25,7 @@
         <aside class="groups">
           <div class="section-head"><h2>分组</h2><button class="icon-btn" id="addGroupBtn" aria-label="添加分组">＋</button></div>
           <nav id="groupList"><button class="group active" data-group=""><span><i class="dot all"></i>全部服务器</span><b>0</b></button></nav>
-          <div class="legend"><span><i class="dot online"></i>在线</span><span><i class="dot offline"></i>离线</span></div>
+          <div class="group-status"><span><i class="dot online"></i><b id="onlineCount">0</b> 台在线</span><span><i class="dot offline"></i><b id="offlineCount">0</b> 台离线</span></div>
         </aside>
 
         <section class="servers">
