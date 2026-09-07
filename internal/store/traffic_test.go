@@ -145,8 +145,30 @@ func TestYesterdaySurvivesRestartAndOfflineRollover(t *testing.T) {
 	}
 	now = now.AddDate(0, 0, 1)
 	_, nodes = s.Snapshot()
-	if nodes[0].YesterdayUpload != 0 || nodes[0].YesterdayDownload != 0 {
-		t.Fatal("stale yesterday totals survived two days")
+	if nodes[0].YesterdayUpload != 0 || nodes[0].YesterdayDownload != 0 || nodes[0].DayBeforeYesterdayUpload != 200 || nodes[0].DayBeforeYesterdayDownload != 400 {
+		t.Fatal("offline rollover lost day-before-yesterday totals")
+	}
+	now = now.AddDate(0, 0, 1)
+	_, nodes = s.Snapshot()
+	if nodes[0].DayBeforeYesterdayUpload != 0 || nodes[0].DayBeforeYesterdayDownload != 0 {
+		t.Fatal("stale day-before-yesterday totals survived three days")
+	}
+}
+
+func TestDelayedReportSplitsAcrossThreeTrafficDays(t *testing.T) {
+	now := time.Date(2026, 9, 5, 12, 0, 0, 0, trafficLocation)
+	n := Node{}
+	n.applyReport("", "", Metrics{TotalUpload: 10000, TotalDownload: 20000, Uptime: 1000}, now)
+	now = now.Add(48 * time.Hour)
+	n.applyReport("", "", Metrics{TotalUpload: 14800, TotalDownload: 29600, Uptime: 173800}, now)
+	if n.TodayUpload != 1200 || n.TodayDownload != 2400 {
+		t.Fatalf("incorrect today split: %d/%d", n.TodayUpload, n.TodayDownload)
+	}
+	if n.YesterdayUpload != 2400 || n.YesterdayDownload != 4800 {
+		t.Fatalf("incorrect yesterday split: %d/%d", n.YesterdayUpload, n.YesterdayDownload)
+	}
+	if n.DayBeforeYesterdayUpload != 1200 || n.DayBeforeYesterdayDownload != 2400 {
+		t.Fatalf("incorrect day-before-yesterday split: %d/%d", n.DayBeforeYesterdayUpload, n.DayBeforeYesterdayDownload)
 	}
 }
 

@@ -86,6 +86,8 @@ function render() {
   $("#sumTodayDownload").textContent = bytes(scoped.reduce((sum, node) => sum + (node.todayDownload || 0), 0));
   $("#sumYesterdayUpload").textContent = bytes(scoped.reduce((sum, node) => sum + (node.yesterdayUpload || 0), 0));
   $("#sumYesterdayDownload").textContent = bytes(scoped.reduce((sum, node) => sum + (node.yesterdayDownload || 0), 0));
+  $("#sumDayBeforeYesterdayUpload").textContent = bytes(scoped.reduce((sum, node) => sum + (node.dayBeforeYesterdayUpload || 0), 0));
+  $("#sumDayBeforeYesterdayDownload").textContent = bytes(scoped.reduce((sum, node) => sum + (node.dayBeforeYesterdayDownload || 0), 0));
   $("#onlineCount").textContent = active.length;
   $("#offlineCount").textContent = scoped.length - active.length;
   document.querySelectorAll("[data-status]").forEach((button) => {

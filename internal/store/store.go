@@ -28,24 +28,26 @@ type Metrics struct {
 }
 
 type Node struct {
-	ID                string    `json:"id"`
-	Name              string    `json:"name"`
-	IP                string    `json:"ip"`
-	GroupIDs          []string  `json:"groupIds"`
-	GroupID           string    `json:"groupId,omitempty"` // legacy API compatibility
-	Sort              int       `json:"sort"`
-	AgentToken        string    `json:"agentToken,omitempty"`
-	Version           string    `json:"version"`
-	LastSeen          time.Time `json:"lastSeen"`
-	UpgradeRequested  bool      `json:"upgradeRequested,omitempty"`
-	TrafficDate       string    `json:"trafficDate"`
-	TodayUpload       uint64    `json:"todayUpload"`
-	TodayDownload     uint64    `json:"todayDownload"`
-	YesterdayUpload   uint64    `json:"yesterdayUpload"`
-	YesterdayDownload uint64    `json:"yesterdayDownload"`
-	UploadBaseline    uint64    `json:"uploadBaseline"`
-	DownloadBaseline  uint64    `json:"downloadBaseline"`
-	BaselineReady     bool      `json:"baselineReady"`
+	ID                         string    `json:"id"`
+	Name                       string    `json:"name"`
+	IP                         string    `json:"ip"`
+	GroupIDs                   []string  `json:"groupIds"`
+	GroupID                    string    `json:"groupId,omitempty"` // legacy API compatibility
+	Sort                       int       `json:"sort"`
+	AgentToken                 string    `json:"agentToken,omitempty"`
+	Version                    string    `json:"version"`
+	LastSeen                   time.Time `json:"lastSeen"`
+	UpgradeRequested           bool      `json:"upgradeRequested,omitempty"`
+	TrafficDate                string    `json:"trafficDate"`
+	TodayUpload                uint64    `json:"todayUpload"`
+	TodayDownload              uint64    `json:"todayDownload"`
+	YesterdayUpload            uint64    `json:"yesterdayUpload"`
+	YesterdayDownload          uint64    `json:"yesterdayDownload"`
+	DayBeforeYesterdayUpload   uint64    `json:"dayBeforeYesterdayUpload"`
+	DayBeforeYesterdayDownload uint64    `json:"dayBeforeYesterdayDownload"`
+	UploadBaseline             uint64    `json:"uploadBaseline"`
+	DownloadBaseline           uint64    `json:"downloadBaseline"`
+	BaselineReady              bool      `json:"baselineReady"`
 	Metrics
 }
 
@@ -346,9 +348,15 @@ func (n *Node) rollTrafficDay(now time.Time) {
 	if n.TrafficDate == date {
 		return
 	}
+	previousTodayUpload, previousTodayDownload := n.TodayUpload, n.TodayDownload
+	previousYesterdayUpload, previousYesterdayDownload := n.YesterdayUpload, n.YesterdayDownload
+	n.DayBeforeYesterdayUpload, n.DayBeforeYesterdayDownload = 0, 0
 	n.YesterdayUpload, n.YesterdayDownload = 0, 0
 	if n.TrafficDate == local.AddDate(0, 0, -1).Format("2006-01-02") {
-		n.YesterdayUpload, n.YesterdayDownload = n.TodayUpload, n.TodayDownload
+		n.DayBeforeYesterdayUpload, n.DayBeforeYesterdayDownload = previousYesterdayUpload, previousYesterdayDownload
+		n.YesterdayUpload, n.YesterdayDownload = previousTodayUpload, previousTodayDownload
+	} else if n.TrafficDate == local.AddDate(0, 0, -2).Format("2006-01-02") {
+		n.DayBeforeYesterdayUpload, n.DayBeforeYesterdayDownload = previousTodayUpload, previousTodayDownload
 	}
 	n.TodayUpload, n.TodayDownload = 0, 0
 	n.TrafficDate = date
@@ -385,6 +393,7 @@ func (n *Node) applyReport(ip, version string, metrics Metrics, now time.Time) {
 		local := now.In(trafficLocation)
 		midnight := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, trafficLocation)
 		yesterday := midnight.AddDate(0, 0, -1)
+		dayBeforeYesterday := midnight.AddDate(0, 0, -2)
 		portion := func(value uint64, from, to time.Time) uint64 {
 			if from.Before(n.LastSeen) {
 				from = n.LastSeen
@@ -404,6 +413,8 @@ func (n *Node) applyReport(ip, version string, metrics Metrics, now time.Time) {
 		n.TodayDownload += portion(down, midnight, now)
 		n.YesterdayUpload += portion(up, yesterday, midnight)
 		n.YesterdayDownload += portion(down, yesterday, midnight)
+		n.DayBeforeYesterdayUpload += portion(up, dayBeforeYesterday, yesterday)
+		n.DayBeforeYesterdayDownload += portion(down, dayBeforeYesterday, yesterday)
 	}
 	n.BaselineReady = true
 	// A failed uptime read must not destroy a valid legacy reboot baseline.
