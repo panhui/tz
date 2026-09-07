@@ -7,3 +7,55 @@
 .overview{padding-top:24px}.group-status{margin:28px 10px 0;padding-top:18px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:10px;color:var(--muted);font-size:12px}.group-status span{display:flex;align-items:center;gap:6px}.group-status b{color:var(--text);font-size:12px;font-variant-numeric:tabular-nums}
 @media(max-width:1100px){.overview{grid-template-columns:repeat(3,1fr)}.intro{grid-column:1/-1}.workspace{grid-template-columns:1fr}.groups{border-right:0;border-bottom:1px solid var(--line)}#groupList{flex-direction:row;overflow-x:auto}.group{width:auto;min-width:max-content}.group-row{min-width:max-content}.group-row .group-edit,.group-row .group-delete{display:block}.legend{display:none}}
 @media(max-width:760px){.topbar{padding:0 16px}.brand em,.sync,.top-actions .ghost{display:none}.overview{padding:22px 16px;grid-template-columns:1fr}.intro{grid-column:auto}.stat{min-height:92px}.workspace{margin:0 16px 20px}.groups{padding:18px 12px}.list-head{height:auto;padding:18px;align-items:stretch;gap:14px;flex-direction:column}.search input{width:100%}.top-actions .btn{padding:9px 11px}.top-actions .btn span{display:none}}
+.action-label{display:none}
+.table-wrap .node-offline{background:#111815;filter:grayscale(1)}
+.table-wrap .node-offline td,.table-wrap .node-offline td *{color:#84908b!important}
+.table-wrap .node-offline .status-dot{background:#707a75;box-shadow:none}
+@media(max-width:760px){
+  .shell{width:100%;min-width:0}
+  .topbar{height:62px;padding:0 12px;gap:8px}
+  .brand{gap:7px;font-size:18px}.brand-mark{width:28px;height:28px}
+  .top-actions{gap:6px}.top-actions .ghost{display:inline-block}
+  .top-actions .btn{font-size:12px;min-height:40px;padding:8px 10px}
+  .overview{padding:14px 12px;gap:10px}
+  .stat.paired{min-height:0;padding:12px 14px;border-radius:14px}
+  .paired h2{font-size:13px;margin-bottom:8px}
+  .stat strong{font-size:19px;margin:4px 0}.paired>small{margin-top:7px;line-height:1.5;overflow-wrap:anywhere}
+  .stat-pair>div{min-width:0}.stat-pair span{font-size:11px}
+  .workspace{margin:0 12px 16px;border-radius:16px;min-height:0}
+  .groups{padding:12px 10px;min-width:0}
+  #groupList{margin-top:8px;gap:6px;padding-bottom:4px}
+  .group{min-height:42px;font-size:13px}
+  .group-row .group-edit,.group-row .group-delete{min-width:34px;min-height:42px}
+  .icon-btn{min-width:40px;min-height:40px}
+  .group-status{flex-direction:row;flex-wrap:wrap;gap:18px;margin:8px 8px 0;padding-top:10px}
+  .list-head{padding:14px;gap:10px}.list-head h2{font-size:15px}
+  .search input,.field input,.field select,.field .picker-search input{font-size:16px}
+  .table-wrap{overflow:visible;min-height:0;padding:0 10px 10px}
+  .table-wrap table{display:block;width:100%;min-width:0}
+  .table-wrap thead{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  #nodeRows{display:grid;gap:12px}
+  #nodeRows tr{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:0 10px;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--panel)}
+  #nodeRows td{min-width:0;grid-column:span 3;white-space:normal;overflow-wrap:anywhere;padding:8px 0;border:0;font-size:13px}
+  #nodeRows td[data-label]::before{content:attr(data-label);display:block;color:var(--muted);font-size:11px;font-weight:400;margin-bottom:5px}
+  #nodeRows .server-cell{order:-2;grid-column:span 5;padding:0 0 12px}
+  #nodeRows .sort-cell{order:-1;grid-column:span 1;text-align:right;padding:0 0 12px}
+  .server-name{min-width:0;gap:8px}.server-copy{min-width:0;min-height:40px}
+  .server-name strong{font-size:14px;overflow-wrap:anywhere}.server-name small{line-height:1.5;overflow-wrap:anywhere}
+  .status-dot{flex-shrink:0;width:7px;height:7px}
+  #nodeRows .speed{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:10px 0}
+  #nodeRows .uptime-cell{grid-column:1/-1;padding:7px 0;border-bottom:1px solid var(--line)}
+  #nodeRows .uptime-cell::before{display:inline;margin-right:10px}
+  #nodeRows .metric-cell{grid-column:span 2}
+  .metric{min-width:0}.bar{max-width:100%}
+  #nodeRows .actions-cell{grid-column:1/-1;padding:10px 0 0}
+  .row-actions{justify-content:stretch;gap:8px}
+  .row-actions .action{flex:1;min-height:42px;display:flex;align-items:center;justify-content:center;gap:6px;background:var(--panel2);border:1px solid var(--line)}
+  .action-label{display:inline;font-size:12px}
+  #nodeRows .node-offline{background:#111815}
+  #nodeRows .node-offline td::before{color:#84908b}
+  .empty{padding:30px 12px}.empty p{line-height:1.6}
+  dialog{max-height:calc(100dvh - 24px);overflow-y:auto}
+  #entityForm,.command-card{padding:18px}.modal-actions .btn,.close{min-height:42px;min-width:42px}
+  #toast{left:12px;right:12px;bottom:16px;font-size:13px}
+}

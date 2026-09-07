@@ -42,9 +42,8 @@ function speedHTML(value) {
 }
 
 function uptime(value) {
-  if (!value) return "—";
-  const days = Math.floor(value / 86400), hours = Math.floor((value % 86400) / 3600), minutes = Math.floor((value % 3600) / 60);
-  return days ? `${days}天 ${hours}时` : `${hours}时 ${minutes}分`;
+  if (value === undefined || value === null) return "—";
+  return `${Math.floor(Math.max(0, value) / 86400)}天`;
 }
 
 const percent = (used, total) => total ? Math.min(100, used / total * 100) : 0;
@@ -105,7 +104,21 @@ function renderNodes() {
   $("#emptyState").hidden = nodes.length > 0;
   $("#nodeRows").innerHTML = nodes.map((node) => {
     const isOnline = online(node), memoryPercent = percent(node.memoryUsed, node.memoryTotal), diskPercent = percent(node.diskUsed, node.diskTotal);
-    return `<tr><td class="sort-cell">${node.sort}</td><td><div class="server-name"><i class="status-dot ${isOnline ? "" : "offline"}"></i><button class="server-copy" data-copy-ip="${escapeHTML(node.ip)}" title="点击复制 IP"><strong>${escapeHTML(node.name)}</strong><small>${escapeHTML(node.ip || "等待首次上报")} · ${isOnline ? "在线" : "离线"}</small></button></div></td><td class="speed up">↑ ${isOnline ? speedHTML(node.uploadSpeed) : "—"}</td><td class="speed down">↓ ${isOnline ? speedHTML(node.downloadSpeed) : "—"}</td><td>${uptime(node.uptime)}</td><td><div class="metric"><span class="value">${isOnline ? `${node.cpu.toFixed(1)}%` : "—"}</span><progress class="bar" max="100" value="${isOnline ? Math.min(100, node.cpu) : 0}" aria-label="CPU 使用率"></progress></div></td><td><div class="metric"><span class="value">${isOnline ? `${memoryPercent.toFixed(1)}%` : "—"}</span><progress class="bar" max="100" value="${isOnline ? memoryPercent : 0}" aria-label="内存使用率"></progress></div></td><td><div class="metric"><span class="value">${isOnline ? `${diskPercent.toFixed(1)}%` : "—"}</span><progress class="bar" max="100" value="${isOnline ? diskPercent : 0}" aria-label="存储使用率"></progress></div></td><td>${bytes(node.todayUpload || 0)}</td><td>${bytes(node.todayDownload || 0)}</td><td>${bytes(node.totalUpload)}</td><td>${bytes(node.totalDownload)}</td><td><div class="row-actions"><button class="action" title="升级探针" data-upgrade="${node.id}">↻</button><button class="action" title="编辑" data-edit="${node.id}">✎</button><button class="action delete" title="删除" data-delete="${node.id}">×</button></div></td></tr>`;
+    return `<tr class="${isOnline ? "" : "node-offline"}">
+      <td class="sort-cell" data-label="排序">${node.sort}</td>
+      <td class="server-cell"><div class="server-name"><i class="status-dot ${isOnline ? "" : "offline"}"></i><button class="server-copy" data-copy-ip="${escapeHTML(node.ip)}" title="点击复制 IP"><strong>${escapeHTML(node.name)}</strong><small>${escapeHTML(node.ip || "等待首次上报")} · ${isOnline ? "在线" : "离线"}</small></button></div></td>
+      <td class="speed up" data-label="上传速度">↑ ${isOnline ? speedHTML(node.uploadSpeed) : "—"}</td>
+      <td class="speed down" data-label="下载速度">↓ ${isOnline ? speedHTML(node.downloadSpeed) : "—"}</td>
+      <td class="traffic-cell" data-label="今日上传">${bytes(node.todayUpload || 0)}</td>
+      <td class="traffic-cell" data-label="今日下载">${bytes(node.todayDownload || 0)}</td>
+      <td class="traffic-cell" data-label="总上传">${bytes(node.totalUpload)}</td>
+      <td class="traffic-cell" data-label="总下载">${bytes(node.totalDownload)}</td>
+      <td class="uptime-cell" data-label="运行时间">${uptime(node.uptime)}</td>
+      <td class="metric-cell" data-label="CPU"><div class="metric"><span class="value">${isOnline ? `${node.cpu.toFixed(1)}%` : "—"}</span><progress class="bar" max="100" value="${isOnline ? Math.min(100, node.cpu) : 0}" aria-label="CPU 使用率"></progress></div></td>
+      <td class="metric-cell" data-label="内存"><div class="metric"><span class="value">${isOnline ? `${memoryPercent.toFixed(1)}%` : "—"}</span><progress class="bar" max="100" value="${isOnline ? memoryPercent : 0}" aria-label="内存使用率"></progress></div></td>
+      <td class="metric-cell" data-label="存储"><div class="metric"><span class="value">${isOnline ? `${diskPercent.toFixed(1)}%` : "—"}</span><progress class="bar" max="100" value="${isOnline ? diskPercent : 0}" aria-label="存储使用率"></progress></div></td>
+      <td class="actions-cell"><div class="row-actions"><button class="action" title="升级探针" data-upgrade="${node.id}">↻<span class="action-label">升级</span></button><button class="action" title="编辑" data-edit="${node.id}">✎<span class="action-label">编辑</span></button><button class="action delete" title="删除" data-delete="${node.id}">×<span class="action-label">删除</span></button></div></td>
+    </tr>`;
   }).join("");
   document.querySelectorAll("[data-edit]").forEach((button) => { button.onclick = () => editNode(button.dataset.edit); });
   document.querySelectorAll("[data-delete]").forEach((button) => { button.onclick = () => deleteNode(button.dataset.delete); });
