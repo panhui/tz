@@ -1,6 +1,9 @@
 const $ = (selector) => document.querySelector(selector);
+const savedTheme = localStorage.getItem("tz-theme");
+const initialTheme = savedTheme === "light" ? "light" : "dark";
+document.documentElement.dataset.theme = initialTheme;
 const state = {
-  groups: [], nodes: [], group: "", query: "",
+  groups: [], nodes: [], group: "", query: "", status: "", sortKey: "", sortDirection: "desc", theme: initialTheme,
   token: localStorage.getItem("tz-admin-token") || "",
 };
 
@@ -85,6 +88,10 @@ function render() {
   $("#sumYesterdayDownload").textContent = bytes(scoped.reduce((sum, node) => sum + (node.yesterdayDownload || 0), 0));
   $("#onlineCount").textContent = active.length;
   $("#offlineCount").textContent = scoped.length - active.length;
+  document.querySelectorAll("[data-status]").forEach((button) => {
+    const selected = button.dataset.status === state.status;
+    button.classList.toggle("active", selected); button.setAttribute("aria-pressed", String(selected));
+  });
   document.querySelectorAll(".daily-scope").forEach((element) => { element.textContent = state.group ? "北京时间 · 当前分组" : "北京时间 · 全部节点"; });
   renderGroups(); renderNodes();
 }
@@ -98,10 +105,27 @@ function renderGroups() {
 }
 
 function renderNodes() {
-  const nodes = state.nodes.filter((node) => (!state.group || groupIDs(node).includes(state.group)) && (!state.query || `${node.name} ${node.ip}`.toLowerCase().includes(state.query)));
+  const filtered = state.nodes.filter((node) => (!state.group || groupIDs(node).includes(state.group)) && (!state.query || `${node.name} ${node.ip}`.toLowerCase().includes(state.query)) && (!state.status || (state.status === "online") === online(node)));
+  const nodes = state.sortKey ? filtered.map((node, index) => ({ node, index })).sort((left, right) => {
+    const speedSort = state.sortKey === "uploadSpeed" || state.sortKey === "downloadSpeed";
+    const leftValue = speedSort && !online(left.node) ? 0 : Number(left.node[state.sortKey]) || 0;
+    const rightValue = speedSort && !online(right.node) ? 0 : Number(right.node[state.sortKey]) || 0;
+    const result = leftValue - rightValue;
+    return result === 0 ? left.index - right.index : (state.sortDirection === "asc" ? result : -result);
+  }).map((item) => item.node) : filtered;
   const group = state.groups.find((item) => item.id === state.group);
-  $("#listTitle").textContent = group ? group.name : "全部服务器"; $("#listMeta").textContent = `${nodes.length} 台服务器`;
+  const statusLabel = state.status === "online" ? "在线" : state.status === "offline" ? "离线" : "";
+  $("#listTitle").textContent = group ? group.name : "全部服务器"; $("#listMeta").textContent = `${nodes.length} 台${statusLabel}服务器`;
   $("#emptyState").hidden = nodes.length > 0;
+  const noNodesAtAll = state.nodes.length === 0;
+  $("#emptyTitle").textContent = noNodesAtAll ? "等待节点接入" : "没有匹配的服务器";
+  $("#emptyText").textContent = noNodesAtAll ? "在任意 Linux 服务器运行同一条安装命令，节点会自动出现。" : "请切换状态、分组或修改搜索条件。";
+  $("#emptyInstallBtn").hidden = !noNodesAtAll;
+  document.querySelectorAll("[data-sort-heading]").forEach((heading) => {
+    const selected = heading.dataset.sortHeading === state.sortKey;
+    heading.setAttribute("aria-sort", selected ? (state.sortDirection === "asc" ? "ascending" : "descending") : "none");
+    const indicator = heading.querySelector("span"); if (indicator) indicator.textContent = selected ? (state.sortDirection === "asc" ? "↑" : "↓") : "↕";
+  });
   $("#nodeRows").innerHTML = nodes.map((node) => {
     const isOnline = online(node), memoryPercent = percent(node.memoryUsed, node.memoryTotal), diskPercent = percent(node.diskUsed, node.diskTotal);
     return `<tr class="${isOnline ? "" : "node-offline"}">
@@ -252,6 +276,10 @@ function registerWebMCP() {
 }
 
 document.querySelectorAll("[data-close-form]").forEach((button) => { button.onclick = () => $("#formDialog").close(); });
+$("#themeSelect").value = state.theme;
+$("#themeSelect").onchange = (event) => { state.theme = event.target.value === "light" ? "light" : "dark"; document.documentElement.dataset.theme = state.theme; localStorage.setItem("tz-theme", state.theme); };
+document.querySelectorAll("[data-status]").forEach((button) => { button.onclick = () => { state.status = state.status === button.dataset.status ? "" : button.dataset.status; renderNodes(); document.querySelectorAll("[data-status]").forEach((item) => { const selected = item.dataset.status === state.status; item.classList.toggle("active", selected); item.setAttribute("aria-pressed", String(selected)); }); }; });
+document.querySelectorAll("[data-sort]").forEach((button) => { button.onclick = () => { const key = button.dataset.sort; if (state.sortKey === key) state.sortDirection = state.sortDirection === "desc" ? "asc" : "desc"; else { state.sortKey = key; state.sortDirection = "desc"; } renderNodes(); }; });
 $("#installAgentBtn").onclick = openInstallCommand; $("#emptyInstallBtn").onclick = openInstallCommand;
 $("#addGroupBtn").onclick = () => openEntityForm("group"); $("#tokenBtn").onclick = () => state.token ? openChangeToken() : openToken();
 $("#search").oninput = (event) => { state.query = event.target.value.trim().toLowerCase(); renderNodes(); };
