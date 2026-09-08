@@ -137,6 +137,8 @@ function renderNodes() {
       <td class="speed down" data-label="下载速度">↓ ${isOnline ? speedHTML(node.downloadSpeed) : "—"}</td>
       <td class="traffic-cell" data-label="今日上传">${bytes(node.todayUpload || 0)}</td>
       <td class="traffic-cell" data-label="今日下载">${bytes(node.todayDownload || 0)}</td>
+      <td class="traffic-cell" data-label="昨日上传">${bytes(node.yesterdayUpload || 0)}</td>
+      <td class="traffic-cell" data-label="昨日下载">${bytes(node.yesterdayDownload || 0)}</td>
       <td class="traffic-cell" data-label="总上传">${bytes(node.totalUpload)}</td>
       <td class="traffic-cell" data-label="总下载">${bytes(node.totalDownload)}</td>
       <td class="uptime-cell" data-label="运行时间">${uptime(node.uptime)}</td>
