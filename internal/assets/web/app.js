@@ -2,8 +2,35 @@ const $ = (selector) => document.querySelector(selector);
 const savedTheme = localStorage.getItem("tz-theme");
 const initialTheme = savedTheme === "light" ? "light" : "dark";
 document.documentElement.dataset.theme = initialTheme;
+const defaultColumns = [
+  { id: "sort", label: "排序", width: 70 }, { id: "server", label: "服务器", width: 200 },
+  { id: "uploadSpeed", label: "上传速度", width: 115 }, { id: "downloadSpeed", label: "下载速度", width: 115 },
+  { id: "todayUpload", label: "今日上传", width: 100 }, { id: "todayDownload", label: "今日下载", width: 100 },
+  { id: "yesterdayUpload", label: "昨日上传", width: 100 }, { id: "yesterdayDownload", label: "昨日下载", width: 100 },
+  { id: "totalUpload", label: "总上传", width: 100 }, { id: "totalDownload", label: "总下载", width: 100 },
+  { id: "uptime", label: "运行时间", width: 85 }, { id: "cpu", label: "CPU", width: 90 },
+  { id: "memory", label: "内存", width: 90 }, { id: "disk", label: "存储", width: 90 },
+  { id: "actions", label: "操作", width: 105 },
+];
+
+function loadColumns() {
+  let saved = [];
+  try { saved = JSON.parse(localStorage.getItem("tz-table-columns") || "[]"); } catch (_) { saved = []; }
+  const definitions = new Map(defaultColumns.map((column) => [column.id, column]));
+  const seen = new Set(), columns = [];
+  if (Array.isArray(saved)) saved.forEach((item) => {
+    if (!item || !definitions.has(item.id) || seen.has(item.id)) return;
+    const definition = definitions.get(item.id); seen.add(item.id);
+    columns.push({ ...definition, visible: item.visible !== false });
+  });
+  defaultColumns.forEach((column) => { if (!seen.has(column.id)) columns.push({ ...column, visible: true }); });
+  if (!columns.some((column) => column.visible)) columns.find((column) => column.id === "server").visible = true;
+  return columns;
+}
+
 const state = {
   groups: [], nodes: [], group: "", query: "", status: "", sortKey: "", sortDirection: "desc", theme: initialTheme,
+  columns: loadColumns(),
   token: localStorage.getItem("tz-admin-token") || "",
 };
 
@@ -59,6 +86,56 @@ const escapeHTML = (value) => String(value ?? "").replace(/[&<>'"]/g, (char) => 
 function toast(message) {
   const element = $("#toast"); element.textContent = message; element.classList.add("show");
   setTimeout(() => element.classList.remove("show"), 2200);
+}
+
+function saveColumns() {
+  localStorage.setItem("tz-table-columns", JSON.stringify(state.columns.map(({ id, visible }) => ({ id, visible }))));
+}
+
+function applyColumnPreferences() {
+  const table = $(".table-wrap table"); if (!table) return;
+  [$("#tableHeader"), ...document.querySelectorAll("#nodeRows tr")].forEach((row) => {
+    if (!row) return;
+    const cells = new Map([...row.querySelectorAll("[data-column]")].map((cell) => [cell.dataset.column, cell]));
+    state.columns.forEach((column) => {
+      const cell = cells.get(column.id); if (!cell) return;
+      cell.hidden = !column.visible; row.appendChild(cell);
+    });
+  });
+  const width = state.columns.filter((column) => column.visible).reduce((sum, column) => sum + column.width, 0);
+  table.style.minWidth = `max(100%, ${Math.max(240, width)}px)`;
+}
+
+function moveColumn(id, offset) {
+  const index = state.columns.findIndex((column) => column.id === id), target = index + offset;
+  if (index < 0 || target < 0 || target >= state.columns.length) return;
+  const [column] = state.columns.splice(index, 1); state.columns.splice(target, 0, column);
+  saveColumns(); applyColumnPreferences(); renderColumnSettings();
+}
+
+function renderColumnSettings() {
+  $("#columnList").innerHTML = state.columns.map((column, index) => `<div class="column-item" draggable="true" data-column-item="${column.id}"><span class="drag-handle" title="拖动调整位置" aria-hidden="true">⠿</span><label><input type="checkbox" data-column-visible="${column.id}" ${column.visible ? "checked" : ""}><span>${column.label}</span></label><div class="column-move"><button type="button" data-column-up="${column.id}" aria-label="上移${column.label}" ${index === 0 ? "disabled" : ""}>↑</button><button type="button" data-column-down="${column.id}" aria-label="下移${column.label}" ${index === state.columns.length - 1 ? "disabled" : ""}>↓</button></div></div>`).join("");
+  document.querySelectorAll("[data-column-visible]").forEach((checkbox) => { checkbox.onchange = () => {
+    const column = state.columns.find((item) => item.id === checkbox.dataset.columnVisible);
+    if (!checkbox.checked && state.columns.filter((item) => item.visible).length === 1) { checkbox.checked = true; toast("至少保留一列"); return; }
+    column.visible = checkbox.checked; saveColumns(); applyColumnPreferences();
+  }; });
+  document.querySelectorAll("[data-column-up]").forEach((button) => { button.onclick = () => moveColumn(button.dataset.columnUp, -1); });
+  document.querySelectorAll("[data-column-down]").forEach((button) => { button.onclick = () => moveColumn(button.dataset.columnDown, 1); });
+  document.querySelectorAll("[data-column-item]").forEach((item) => {
+    item.ondragstart = (event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", item.dataset.columnItem); item.classList.add("dragging"); };
+    item.ondragend = () => { document.querySelectorAll(".column-item").forEach((element) => element.classList.remove("dragging", "drag-over")); };
+    item.ondragover = (event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; item.classList.add("drag-over"); };
+    item.ondragleave = () => item.classList.remove("drag-over");
+    item.ondrop = (event) => {
+      event.preventDefault(); const sourceID = event.dataTransfer.getData("text/plain"), targetID = item.dataset.columnItem;
+      if (!sourceID || sourceID === targetID) return;
+      const sourceIndex = state.columns.findIndex((column) => column.id === sourceID), targetIndex = state.columns.findIndex((column) => column.id === targetID);
+      if (sourceIndex < 0 || targetIndex < 0) return;
+      const [column] = state.columns.splice(sourceIndex, 1); state.columns.splice(targetIndex, 0, column);
+      saveColumns(); applyColumnPreferences(); renderColumnSettings();
+    };
+  });
 }
 
 async function load() {
@@ -131,23 +208,24 @@ function renderNodes() {
   $("#nodeRows").innerHTML = nodes.map((node) => {
     const isOnline = online(node), memoryPercent = percent(node.memoryUsed, node.memoryTotal), diskPercent = percent(node.diskUsed, node.diskTotal);
     return `<tr class="${isOnline ? "" : "node-offline"}">
-      <td class="sort-cell" data-label="排序">${node.sort}</td>
-      <td class="server-cell"><div class="server-name"><i class="status-dot ${isOnline ? "" : "offline"}"></i><button class="server-copy" data-copy-ip="${escapeHTML(node.ip)}" title="点击复制 IP"><strong>${escapeHTML(node.name)}</strong><small>${escapeHTML(node.ip || "等待首次上报")} · ${isOnline ? "在线" : "离线"}</small></button></div></td>
-      <td class="speed up" data-label="上传速度">↑ ${isOnline ? speedHTML(node.uploadSpeed) : "—"}</td>
-      <td class="speed down" data-label="下载速度">↓ ${isOnline ? speedHTML(node.downloadSpeed) : "—"}</td>
-      <td class="traffic-cell" data-label="今日上传">${bytes(node.todayUpload || 0)}</td>
-      <td class="traffic-cell" data-label="今日下载">${bytes(node.todayDownload || 0)}</td>
-      <td class="traffic-cell" data-label="昨日上传">${bytes(node.yesterdayUpload || 0)}</td>
-      <td class="traffic-cell" data-label="昨日下载">${bytes(node.yesterdayDownload || 0)}</td>
-      <td class="traffic-cell" data-label="总上传">${bytes(node.totalUpload)}</td>
-      <td class="traffic-cell" data-label="总下载">${bytes(node.totalDownload)}</td>
-      <td class="uptime-cell" data-label="运行时间">${uptime(node.uptime)}</td>
-      <td class="metric-cell" data-label="CPU"><div class="metric"><span class="value">${isOnline ? `${node.cpu.toFixed(1)}%` : "—"}</span><progress class="bar" max="100" value="${isOnline ? Math.min(100, node.cpu) : 0}" aria-label="CPU 使用率"></progress></div></td>
-      <td class="metric-cell" data-label="内存"><div class="metric"><span class="value">${isOnline ? `${memoryPercent.toFixed(1)}%` : "—"}</span><progress class="bar" max="100" value="${isOnline ? memoryPercent : 0}" aria-label="内存使用率"></progress></div></td>
-      <td class="metric-cell" data-label="存储"><div class="metric"><span class="value">${isOnline ? `${diskPercent.toFixed(1)}%` : "—"}</span><progress class="bar" max="100" value="${isOnline ? diskPercent : 0}" aria-label="存储使用率"></progress></div></td>
-      <td class="actions-cell"><div class="row-actions"><button class="action" title="升级探针" data-upgrade="${node.id}">↻<span class="action-label">升级</span></button><button class="action" title="编辑" data-edit="${node.id}">✎<span class="action-label">编辑</span></button><button class="action delete" title="删除" data-delete="${node.id}">×<span class="action-label">删除</span></button></div></td>
+      <td class="sort-cell" data-column="sort" data-label="排序">${node.sort}</td>
+      <td class="server-cell" data-column="server"><div class="server-name"><i class="status-dot ${isOnline ? "" : "offline"}"></i><button class="server-copy" data-copy-ip="${escapeHTML(node.ip)}" title="点击复制 IP"><strong>${escapeHTML(node.name)}</strong><small>${escapeHTML(node.ip || "等待首次上报")} · ${isOnline ? "在线" : "离线"}</small></button></div></td>
+      <td class="speed up" data-column="uploadSpeed" data-label="上传速度">↑ ${isOnline ? speedHTML(node.uploadSpeed) : "—"}</td>
+      <td class="speed down" data-column="downloadSpeed" data-label="下载速度">↓ ${isOnline ? speedHTML(node.downloadSpeed) : "—"}</td>
+      <td class="traffic-cell" data-column="todayUpload" data-label="今日上传">${bytes(node.todayUpload || 0)}</td>
+      <td class="traffic-cell" data-column="todayDownload" data-label="今日下载">${bytes(node.todayDownload || 0)}</td>
+      <td class="traffic-cell" data-column="yesterdayUpload" data-label="昨日上传">${bytes(node.yesterdayUpload || 0)}</td>
+      <td class="traffic-cell" data-column="yesterdayDownload" data-label="昨日下载">${bytes(node.yesterdayDownload || 0)}</td>
+      <td class="traffic-cell" data-column="totalUpload" data-label="总上传">${bytes(node.totalUpload)}</td>
+      <td class="traffic-cell" data-column="totalDownload" data-label="总下载">${bytes(node.totalDownload)}</td>
+      <td class="uptime-cell" data-column="uptime" data-label="运行时间">${uptime(node.uptime)}</td>
+      <td class="metric-cell" data-column="cpu" data-label="CPU"><div class="metric"><span class="value">${isOnline ? `${node.cpu.toFixed(1)}%` : "—"}</span><progress class="bar" max="100" value="${isOnline ? Math.min(100, node.cpu) : 0}" aria-label="CPU 使用率"></progress></div></td>
+      <td class="metric-cell" data-column="memory" data-label="内存"><div class="metric"><span class="value">${isOnline ? `${memoryPercent.toFixed(1)}%` : "—"}</span><progress class="bar" max="100" value="${isOnline ? memoryPercent : 0}" aria-label="内存使用率"></progress></div></td>
+      <td class="metric-cell" data-column="disk" data-label="存储"><div class="metric"><span class="value">${isOnline ? `${diskPercent.toFixed(1)}%` : "—"}</span><progress class="bar" max="100" value="${isOnline ? diskPercent : 0}" aria-label="存储使用率"></progress></div></td>
+      <td class="actions-cell" data-column="actions"><div class="row-actions"><button class="action" title="升级探针" data-upgrade="${node.id}">↻<span class="action-label">升级</span></button><button class="action" title="编辑" data-edit="${node.id}">✎<span class="action-label">编辑</span></button><button class="action delete" title="删除" data-delete="${node.id}">×<span class="action-label">删除</span></button></div></td>
     </tr>`;
   }).join("");
+  applyColumnPreferences();
   document.querySelectorAll("[data-edit]").forEach((button) => { button.onclick = () => editNode(button.dataset.edit); });
   document.querySelectorAll("[data-delete]").forEach((button) => { button.onclick = () => deleteNode(button.dataset.delete); });
   document.querySelectorAll("[data-upgrade]").forEach((button) => { button.onclick = () => upgradeNode(button.dataset.upgrade); });
@@ -290,6 +368,10 @@ $("#search").oninput = (event) => { state.query = event.target.value.trim().toLo
 $("#copyInstallCommand").onclick = () => copyText($("#installCommand").textContent).then(() => toast("安装命令已复制")).catch((error) => toast(error.message));
 $("#copyUninstallCommand").onclick = () => copyText($("#uninstallCommand").textContent).then(() => toast("卸载命令已复制")).catch((error) => toast(error.message));
 $("#commandDone").onclick = () => $("#commandDialog").close();
+$("#columnsBtn").onclick = () => { renderColumnSettings(); $("#columnsDialog").showModal(); };
+$("#columnsClose").onclick = $("#columnsDone").onclick = () => $("#columnsDialog").close();
+$("#columnsReset").onclick = () => { state.columns = defaultColumns.map((column) => ({ ...column, visible: true })); saveColumns(); applyColumnPreferences(); renderColumnSettings(); toast("已恢复默认列设置"); };
+applyColumnPreferences();
 if (state.token) load(); else openToken();
 setInterval(() => { if (state.token) load(); }, 3000);
 registerWebMCP();
