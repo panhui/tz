@@ -83,3 +83,7 @@ html[data-theme="light"] .column-item{background:#f3f6f4}
 html[data-theme="light"] .table-wrap .speed.up,html[data-theme="light"] .table-wrap .speed.down{color:#24332c}
 html[data-theme="light"] .table-wrap .node-offline{background:#f2f4f3;filter:grayscale(1)}
 html[data-theme="light"] .table-wrap .node-offline td,html[data-theme="light"] .table-wrap .node-offline td *{color:#89928e!important}
+.note-cell span{display:block;max-width:220px;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+.field textarea{width:100%;min-height:88px;resize:vertical;border:1px solid var(--line);background:#081310;color:var(--text);padding:12px 13px;border-radius:10px;font:inherit;line-height:1.5;outline:0}.field textarea:focus{border-color:#547a6c}
+html[data-theme="light"] .field textarea{background:#fff}
+@media(max-width:760px){.field textarea{font-size:16px}}

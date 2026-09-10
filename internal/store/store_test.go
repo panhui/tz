@@ -116,14 +116,14 @@ func TestSharedEnrollmentAutoCreatesAndPreservesNode(t *testing.T) {
 	if len(nodes) != 1 || nodes[0].Name != "198.51.100.8" || nodes[0].IP != "198.51.100.8" || nodes[0].Sort != 0 {
 		t.Fatalf("unexpected auto-enrolled node: %#v", nodes)
 	}
-	if err := s.UpdateNode(nodes[0].ID, "自定义名称", []string{}, 9); err != nil {
+	if err := s.UpdateNode(nodes[0].ID, "自定义名称", "香港机房", []string{}, 9); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.AutoReport("node-12345678", "host-a-renamed", "198.51.100.9", "v2", m); err != nil {
 		t.Fatal(err)
 	}
 	_, nodes = s.Snapshot()
-	if nodes[0].Name != "自定义名称" {
+	if nodes[0].Name != "自定义名称" || nodes[0].Note != "香港机房" {
 		t.Fatalf("agent heartbeat overwrote dashboard name: %q", nodes[0].Name)
 	}
 	reopened, err := Open(path)
@@ -133,6 +133,10 @@ func TestSharedEnrollmentAutoCreatesAndPreservesNode(t *testing.T) {
 	persistedToken, err := reopened.EnsureEnrollmentToken("")
 	if err != nil || persistedToken != enrollmentToken {
 		t.Fatalf("enrollment token did not persist: %q != %q", persistedToken, enrollmentToken)
+	}
+	_, nodes = reopened.Snapshot()
+	if nodes[0].Note != "香港机房" {
+		t.Fatalf("node note did not persist: %q", nodes[0].Note)
 	}
 }
 

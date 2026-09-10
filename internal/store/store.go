@@ -30,6 +30,7 @@ type Metrics struct {
 type Node struct {
 	ID                         string    `json:"id"`
 	Name                       string    `json:"name"`
+	Note                       string    `json:"note,omitempty"`
 	IP                         string    `json:"ip"`
 	GroupIDs                   []string  `json:"groupIds"`
 	GroupID                    string    `json:"groupId,omitempty"` // legacy API compatibility
@@ -192,12 +193,13 @@ func (s *Store) CreateNode(name, groupID string, order int) (Node, error) {
 	return n, s.saveLocked()
 }
 
-func (s *Store) UpdateNode(id, name string, groupIDs []string, order int) error {
+func (s *Store) UpdateNode(id, name, note string, groupIDs []string, order int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i := range s.data.Nodes {
 		if s.data.Nodes[i].ID == id {
-			s.data.Nodes[i].Name, s.data.Nodes[i].GroupIDs, s.data.Nodes[i].Sort = name, unique(groupIDs), order
+			s.data.Nodes[i].Name, s.data.Nodes[i].Note = name, note
+			s.data.Nodes[i].GroupIDs, s.data.Nodes[i].Sort = unique(groupIDs), order
 			s.data.Nodes[i].GroupID = ""
 			return s.saveLocked()
 		}

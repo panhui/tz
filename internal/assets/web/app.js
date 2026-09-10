@@ -4,6 +4,7 @@ const initialTheme = savedTheme === "light" ? "light" : "dark";
 document.documentElement.dataset.theme = initialTheme;
 const defaultColumns = [
   { id: "sort", label: "排序", width: 70 }, { id: "server", label: "服务器", width: 200 },
+  { id: "note", label: "备注", width: 190 },
   { id: "uploadSpeed", label: "上传速度", width: 115 }, { id: "downloadSpeed", label: "下载速度", width: 115 },
   { id: "todayUpload", label: "今日上传", width: 100 }, { id: "todayDownload", label: "今日下载", width: 100 },
   { id: "yesterdayUpload", label: "昨日上传", width: 100 }, { id: "yesterdayDownload", label: "昨日下载", width: 100 },
@@ -23,7 +24,15 @@ function loadColumns() {
     const definition = definitions.get(item.id); seen.add(item.id);
     columns.push({ ...definition, visible: item.visible !== false });
   });
-  defaultColumns.forEach((column) => { if (!seen.has(column.id)) columns.push({ ...column, visible: true }); });
+  defaultColumns.forEach((column) => {
+    if (seen.has(column.id)) return;
+    const value = { ...column, visible: true }; seen.add(column.id);
+    if (column.id === "note") {
+      const serverIndex = columns.findIndex((item) => item.id === "server");
+      if (serverIndex >= 0) { columns.splice(serverIndex + 1, 0, value); return; }
+    }
+    columns.push(value);
+  });
   if (!columns.some((column) => column.visible)) columns.find((column) => column.id === "server").visible = true;
   return columns;
 }
@@ -73,7 +82,8 @@ function speedHTML(value) {
 
 function uptime(value) {
   if (value === undefined || value === null) return "—";
-  return `${Math.floor(Math.max(0, value) / 86400)}天`;
+  const totalHours = Math.floor(Math.max(0, value) / 3600), days = Math.floor(totalHours / 24), hours = totalHours % 24;
+  return days > 0 ? `${days}天 ${hours}小时` : `${hours}小时`;
 }
 
 const percent = (used, total) => total ? Math.min(100, used / total * 100) : 0;
@@ -184,7 +194,7 @@ function renderGroups() {
 }
 
 function renderNodes() {
-  const filtered = state.nodes.filter((node) => (!state.group || groupIDs(node).includes(state.group)) && (!state.query || `${node.name} ${node.ip}`.toLowerCase().includes(state.query)) && (!state.status || (state.status === "online") === online(node)));
+  const filtered = state.nodes.filter((node) => (!state.group || groupIDs(node).includes(state.group)) && (!state.query || `${node.name} ${node.ip} ${node.note || ""}`.toLowerCase().includes(state.query)) && (!state.status || (state.status === "online") === online(node)));
   const nodes = state.sortKey ? filtered.map((node, index) => ({ node, index })).sort((left, right) => {
     const speedSort = state.sortKey === "uploadSpeed" || state.sortKey === "downloadSpeed";
     const leftValue = speedSort && !online(left.node) ? 0 : Number(left.node[state.sortKey]) || 0;
@@ -210,6 +220,7 @@ function renderNodes() {
     return `<tr class="${isOnline ? "" : "node-offline"}">
       <td class="sort-cell" data-column="sort" data-label="排序">${node.sort}</td>
       <td class="server-cell" data-column="server"><div class="server-name"><i class="status-dot ${isOnline ? "" : "offline"}"></i><button class="server-copy" data-copy-ip="${escapeHTML(node.ip)}" title="点击复制 IP"><strong>${escapeHTML(node.name)}</strong><small>${escapeHTML(node.ip || "等待首次上报")} · ${isOnline ? "在线" : "离线"}</small></button></div></td>
+      <td class="note-cell" data-column="note" data-label="备注"><span title="${escapeHTML(node.note || "")}">${escapeHTML(node.note || "—")}</span></td>
       <td class="speed up" data-column="uploadSpeed" data-label="上传速度">↑ ${isOnline ? speedHTML(node.uploadSpeed) : "—"}</td>
       <td class="speed down" data-column="downloadSpeed" data-label="下载速度">↓ ${isOnline ? speedHTML(node.downloadSpeed) : "—"}</td>
       <td class="traffic-cell" data-column="todayUpload" data-label="今日上传">${bytes(node.todayUpload || 0)}</td>
@@ -241,7 +252,7 @@ function openEntityForm(kind, item = null) {
   $("#modalKicker").textContent = isNode ? "服务器" : "分组";
   $("#modalTitle").textContent = item ? `编辑${isNode ? "服务器" : "分组"}` : "添加分组";
   $("#formFields").innerHTML = isNode
-    ? `<div class="field"><label>服务器名称</label><input name="name" required maxlength="60" value="${escapeHTML(item.name)}"></div><div class="field"><label>排序</label><input name="sort" type="number" value="${item.sort}"></div>${groupPicker}`
+    ? `<div class="field"><label>服务器名称</label><input name="name" required maxlength="60" value="${escapeHTML(item.name)}"></div><div class="field"><label>备注</label><textarea name="note" maxlength="500" placeholder="填写机房、线路或用途等信息">${escapeHTML(item.note || "")}</textarea></div><div class="field"><label>排序</label><input name="sort" type="number" value="${item.sort}"></div>${groupPicker}`
     : `<div class="field"><label>分组名称</label><input name="name" required maxlength="40" value="${escapeHTML(item?.name || "")}"></div><div class="field"><label>排序</label><input name="sort" type="number" value="${item?.sort ?? state.groups.length}"></div>${serverPicker}`;
   if (isNode) setupGroupPicker();
   if (!isNode && item) setupServerPicker();

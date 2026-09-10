@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/panhui/tz/internal/assets"
 	"github.com/panhui/tz/internal/store"
@@ -157,9 +158,9 @@ func (s *server) api(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"node": publicNode, "agentToken": n.AgentToken})
 	case len(parts) == 2 && parts[0] == "nodes" && r.Method == http.MethodPut:
 		var in struct {
-			Name, GroupID string
-			Sort          int
-			GroupIDs      *[]string `json:"groupIds"`
+			Name, Note, GroupID string
+			Sort                int
+			GroupIDs            *[]string `json:"groupIds"`
 		}
 		if !decode(w, r, &in) {
 			return
@@ -168,13 +169,18 @@ func (s *server) api(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, "服务器名称不能为空", http.StatusBadRequest)
 			return
 		}
+		note := strings.TrimSpace(in.Note)
+		if utf8.RuneCountInString(note) > 500 {
+			jsonError(w, "备注不能超过 500 个字符", http.StatusBadRequest)
+			return
+		}
 		groupIDs := []string{}
 		if in.GroupIDs != nil {
 			groupIDs = *in.GroupIDs
 		} else if in.GroupID != "" {
 			groupIDs = []string{in.GroupID}
 		}
-		respondErr(w, s.store.UpdateNode(parts[1], strings.TrimSpace(in.Name), groupIDs, in.Sort))
+		respondErr(w, s.store.UpdateNode(parts[1], strings.TrimSpace(in.Name), note, groupIDs, in.Sort))
 	case len(parts) == 2 && parts[0] == "nodes" && r.Method == http.MethodDelete:
 		respondErr(w, s.store.DeleteNode(parts[1]))
 	case len(parts) == 3 && parts[0] == "nodes" && parts[2] == "upgrade" && r.Method == http.MethodPost:
