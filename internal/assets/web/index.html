@@ -6,15 +6,16 @@
   <meta name="description" content="轻量、实时的 Linux 服务器监控面板">
   <title>TZ · 服务器监控</title>
   <link rel="stylesheet" href="/app.css">
+	<link rel="stylesheet" href="/ddns.css">
 </head>
 <body>
   <div class="shell">
     <header class="topbar">
       <div class="brand"><span class="brand-mark"><i></i><i></i><i></i></span><span>TZ</span><em>服务器监控</em></div>
-      <div class="top-actions"><span id="syncStatus" class="sync"><b></b>正在连接</span><label class="theme-control"><span>主题</span><select id="themeSelect" aria-label="主题"><option value="dark">暗色</option><option value="light">亮色</option></select></label><button class="btn ghost" id="tokenBtn">管理令牌</button><button class="btn primary" id="installAgentBtn"><span>↓</span> 安装探针</button></div>
+      <div class="top-actions"><span id="syncStatus" class="sync"><b></b>正在连接</span><label class="theme-control"><span>主题</span><select id="themeSelect" aria-label="主题"><option value="dark">暗色</option><option value="light">亮色</option></select></label><button class="btn ghost" id="ddnsNavBtn">DDNS</button><button class="btn ghost" id="tokenBtn">管理令牌</button><button class="btn primary" id="installAgentBtn"><span>↓</span> 安装探针</button></div>
     </header>
 
-    <main>
+    <main id="dashboardPage">
       <section class="overview" aria-label="流量总览">
         <article class="stat paired"><h2>实时速度</h2><div class="stat-pair"><div><span>↑ 上传速度</span><strong id="sumUpSpeed">—</strong></div><div><span>↓ 下载速度</span><strong id="sumDownSpeed">—</strong></div></div><small id="sumTrafficSub">上传总流量 — · 下载总流量 —</small></article>
         <article class="stat paired"><h2>今日流量</h2><div class="stat-pair"><div><span>↑ 今日上传总流量</span><strong id="sumTodayUpload">—</strong></div><div><span>↓ 今日下载总流量</span><strong id="sumTodayDownload">—</strong></div></div><small class="daily-scope">北京时间 · 全部节点</small></article>
@@ -41,12 +42,20 @@
         </section>
       </section>
     </main>
+	<section id="ddnsPage" class="ddns-page" hidden>
+	  <div class="ddns-heading"><div><span class="ddns-kicker">华为云 DNS</span><h1>定时解析</h1><p>按北京时间执行。选择公网域名下的 A 或 CNAME 记录，任务会自动创建或更新解析。</p></div><div class="ddns-heading-actions"><button type="button" class="btn ghost" id="ddnsBackBtn">← 返回监控</button><button type="button" class="btn primary" id="ddnsAddBtn">＋ 新建任务</button></div></div>
+	  <div class="ddns-layout"><section class="ddns-panel"><div class="ddns-panel-head"><div><h2>华为云密钥</h2><p id="ddnsCredentialStatus">尚未配置</p></div></div><p id="ddnsSecurityWarning" class="ddns-warning" hidden>当前使用 HTTP，密钥传输可能被窃听。请先为面板配置 HTTPS，再填写密钥。</p><form id="ddnsCredentialForm" autocomplete="off"><div class="field"><label for="ddnsAK">Access Key Id</label><input id="ddnsAK" type="password" autocomplete="off" required placeholder="输入 Access Key Id"></div><div class="field"><label for="ddnsSK">Secret Access Key</label><input id="ddnsSK" type="password" autocomplete="off" required placeholder="输入 Secret Access Key"></div><p class="ddns-hint">密钥只保存在面板服务器的数据文件中，页面不会回显。修改时请重新填写两项。</p><button type="submit" class="btn primary">保存密钥</button></form></section>
+	  <section class="ddns-panel ddns-tasks"><div class="ddns-panel-head"><div><h2>解析任务</h2><p>每条任务可立即执行、暂停、编辑或查看日志</p></div></div><div class="ddns-table-wrap"><table class="ddns-table"><thead><tr><th>解析域名</th><th>类型</th><th>目标</th><th>下次执行</th><th>重复</th><th>状态</th><th>操作</th></tr></thead><tbody id="ddnsRows"></tbody></table><p id="ddnsEmpty" class="ddns-empty" hidden>还没有解析任务，点击“新建任务”开始。</p></div></section></div>
+	</section>
   </div>
 
   <dialog id="formDialog"><form method="dialog" id="entityForm"><div class="modal-head"><div><span id="modalKicker">服务器</span><h2 id="modalTitle">添加服务器</h2></div><button type="button" data-close-form class="close" aria-label="关闭">×</button></div><div id="formFields"></div><div class="modal-actions"><button type="button" data-close-form class="btn ghost">取消</button><button value="default" class="btn primary" id="saveBtn">保存</button></div></form></dialog>
   <dialog id="commandDialog"><div class="command-card"><div class="success-mark">↓</div><span>探针命令</span><h2>安装或卸载探针</h2><p>在节点服务器以 root 用户执行。所有服务器共用同一条安装命令。</p><div class="command-block"><label>安装命令</label><div class="command"><code id="installCommand"></code><button id="copyInstallCommand" type="button">复制</button></div></div><div class="command-block"><label>卸载命令</label><div class="command"><code id="uninstallCommand"></code><button id="copyUninstallCommand" type="button">复制</button></div></div><button class="btn primary wide" id="commandDone">完成</button></div></dialog>
   <dialog id="columnsDialog"><div class="columns-card"><div class="modal-head"><div><span>列表设置</span><h2>显示与排列</h2></div><button type="button" class="close" id="columnsClose" aria-label="关闭">×</button></div><p>勾选需要显示的列，拖动项目调整顺序。设置会自动保存在当前浏览器，刷新不会复原。</p><div class="column-list" id="columnList"></div><div class="modal-actions"><button type="button" class="btn ghost" id="columnsReset">恢复默认</button><button type="button" class="btn primary" id="columnsDone">完成</button></div></div></dialog>
+	<dialog id="ddnsTaskDialog"><form id="ddnsTaskForm"><div class="modal-head"><div><span>华为云 DNS</span><h2 id="ddnsTaskTitle">新建解析任务</h2></div><button type="button" class="close" id="ddnsTaskClose" aria-label="关闭">×</button></div><div class="field"><label for="ddnsDomain">解析域名</label><input id="ddnsDomain" required placeholder="例如 www.example.com" autocomplete="off"></div><div class="two-fields"><div class="field"><label for="ddnsType">记录类型</label><select id="ddnsType"><option value="A">A（IPv4）</option><option value="CNAME">CNAME（域名）</option></select></div><div class="field"><label for="ddnsTarget">目标 IP 或域名</label><input id="ddnsTarget" required placeholder="例如 1.2.3.4" autocomplete="off"></div></div><div class="two-fields"><div class="field"><label for="ddnsNextRun">首次执行时间</label><input id="ddnsNextRun" type="datetime-local" required></div><div class="field"><label for="ddnsRepeat">重复</label><select id="ddnsRepeat"><option value="once">仅一次</option><option value="daily">每天</option><option value="weekly">每周</option><option value="monthly">每月</option></select></div></div><p class="ddns-hint">时间为北京时间（UTC+8）。立即执行不会改变原定计划。</p><div class="modal-actions"><button type="button" class="btn ghost" id="ddnsTaskCancel">取消</button><button type="submit" class="btn primary">保存任务</button></div></form></dialog>
+	<dialog id="ddnsLogDialog"><div class="ddns-log-card"><div class="modal-head"><div><span>执行记录</span><h2 id="ddnsLogTitle">任务日志</h2></div><button type="button" class="close" id="ddnsLogClose" aria-label="关闭">×</button></div><div id="ddnsLogList" class="ddns-log-list"></div></div></dialog>
   <div id="toast" role="status"></div>
   <script src="/app.js"></script>
+	<script src="/ddns.js"></script>
 </body>
 </html>

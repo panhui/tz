@@ -59,11 +59,15 @@ type Group struct {
 }
 
 type data struct {
-	EnrollmentToken string        `json:"enrollmentToken"`
-	AdminToken      string        `json:"adminToken"`
-	Groups          []Group       `json:"groups"`
-	Nodes           []Node        `json:"nodes"`
-	RemovedNodes    []RemovedNode `json:"removedNodes,omitempty"`
+	EnrollmentToken     string               `json:"enrollmentToken"`
+	AdminToken          string               `json:"adminToken"`
+	Groups              []Group              `json:"groups"`
+	Nodes               []Node               `json:"nodes"`
+	RemovedNodes        []RemovedNode        `json:"removedNodes,omitempty"`
+	DDNSAccessKeyID     string               `json:"ddnsAccessKeyId,omitempty"`
+	DDNSSecretAccessKey string               `json:"ddnsSecretAccessKey,omitempty"`
+	DDNSTasks           []DDNSTask           `json:"ddnsTasks,omitempty"`
+	DDNSLogs            map[string][]DDNSLog `json:"ddnsLogs,omitempty"`
 }
 
 type RemovedNode struct {

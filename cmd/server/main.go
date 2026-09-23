@@ -25,10 +25,12 @@ import (
 var version = "dev"
 
 type server struct {
-	store      *store.Store
-	adminToken string
-	agentToken string
-	tokenMu    sync.RWMutex
+	store       *store.Store
+	adminToken  string
+	agentToken  string
+	tokenMu     sync.RWMutex
+	ddnsMu      sync.Mutex
+	ddnsRunning map[string]bool
 }
 
 func main() {
@@ -55,6 +57,7 @@ func main() {
 		log.Printf("同步管理令牌文件失败：%v", err)
 	}
 	app := &server{store: s, adminToken: adminToken, agentToken: agentToken}
+	go app.runDDNSScheduler()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/", app.api)
 	mux.HandleFunc("/install.sh", installScript)
@@ -110,6 +113,10 @@ func (s *server) api(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	parts := strings.Split(path, "/")
+	if parts[0] == "ddns" {
+		s.ddnsAPI(w, r, parts)
+		return
+	}
 	switch {
 	case path == "dashboard" && r.Method == http.MethodGet:
 		groups, nodes := s.store.Snapshot()
