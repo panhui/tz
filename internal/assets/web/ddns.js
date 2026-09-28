@@ -83,6 +83,7 @@ async function ddnsAction(button) {
 }
 
 $("#ddnsNavBtn").onclick = () => ddnsNavigate($("#ddnsPage").hidden);
+$("#homeLink").onclick = (event) => { event.preventDefault(); ddnsNavigate(false); window.scrollTo({ top: 0, behavior: "smooth" }); };
 $("#ddnsBackBtn").onclick = () => ddnsNavigate(false);
 $("#ddnsAddBtn").onclick = () => ddnsOpenTask(null);
 $("#ddnsType").onchange = ddnsUpdateTargetHint;

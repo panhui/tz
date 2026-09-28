@@ -187,6 +187,10 @@ function render() {
 
 function renderGroups() {
   const counts = {}; state.nodes.forEach((node) => { groupIDs(node).forEach((groupID) => { counts[groupID] = (counts[groupID] || 0) + 1; }); });
+  const mobileSelect = $("#mobileGroupSelect");
+  const mobileOptions = `<option value="">全部服务器 (${state.nodes.length})</option>` + state.groups.map((group) => `<option value="${escapeHTML(group.id)}">${escapeHTML(group.name)} (${counts[group.id] || 0})</option>`).join("");
+  if (mobileSelect.innerHTML !== mobileOptions) mobileSelect.innerHTML = mobileOptions;
+  mobileSelect.value = state.group;
   $("#groupList").innerHTML = `<button class="group ${state.group === "" ? "active" : ""}" data-group=""><span><i class="dot all"></i>全部服务器</span><b>${state.nodes.length}</b></button>` + state.groups.map((group) => `<div class="group-row"><button class="group ${state.group === group.id ? "active" : ""}" data-group="${group.id}"><span><i class="dot online"></i>${escapeHTML(group.name)}</span><b>${counts[group.id] || 0}</b></button><button class="group-edit" data-group-edit="${group.id}" title="编辑分组">✎</button><button class="group-delete" data-group-delete="${group.id}" title="删除分组">×</button></div>`).join("");
   document.querySelectorAll(".group").forEach((button) => { button.onclick = () => { state.group = button.dataset.group; render(); }; });
   document.querySelectorAll("[data-group-edit]").forEach((button) => { button.onclick = () => openEntityForm("group", state.groups.find((group) => group.id === button.dataset.groupEdit)); });
@@ -233,13 +237,14 @@ function renderNodes() {
       <td class="metric-cell" data-column="cpu" data-label="CPU"><div class="metric"><span class="value">${isOnline ? `${node.cpu.toFixed(1)}%` : "—"}</span><progress class="bar" max="100" value="${isOnline ? Math.min(100, node.cpu) : 0}" aria-label="CPU 使用率"></progress></div></td>
       <td class="metric-cell" data-column="memory" data-label="内存"><div class="metric"><span class="value">${isOnline ? `${memoryPercent.toFixed(1)}%` : "—"}</span><progress class="bar" max="100" value="${isOnline ? memoryPercent : 0}" aria-label="内存使用率"></progress></div></td>
       <td class="metric-cell" data-column="disk" data-label="存储"><div class="metric"><span class="value">${isOnline ? `${diskPercent.toFixed(1)}%` : "—"}</span><progress class="bar" max="100" value="${isOnline ? diskPercent : 0}" aria-label="存储使用率"></progress></div></td>
-      <td class="actions-cell" data-column="actions"><div class="row-actions"><button class="action" title="升级探针" data-upgrade="${node.id}">↻<span class="action-label">升级</span></button><button class="action" title="编辑" data-edit="${node.id}">✎<span class="action-label">编辑</span></button><button class="action delete" title="删除" data-delete="${node.id}">×<span class="action-label">删除</span></button></div></td>
+      <td class="actions-cell" data-column="actions"><div class="row-actions"><button class="action" title="升级探针" data-upgrade="${node.id}">↻<span class="action-label">升级</span></button><button class="action power-action" title="重启服务器" data-power-action="reboot" data-node="${node.id}" ${!isOnline || node.powerRequested ? "disabled" : ""}>重启</button><button class="action power-action danger" title="关机" data-power-action="shutdown" data-node="${node.id}" ${!isOnline || node.powerRequested ? "disabled" : ""}>关机</button><button class="action" title="编辑" data-edit="${node.id}">✎<span class="action-label">编辑</span></button><button class="action delete" title="删除" data-delete="${node.id}">×<span class="action-label">删除</span></button></div></td>
     </tr>`;
   }).join("");
   applyColumnPreferences();
   document.querySelectorAll("[data-edit]").forEach((button) => { button.onclick = () => editNode(button.dataset.edit); });
   document.querySelectorAll("[data-delete]").forEach((button) => { button.onclick = () => deleteNode(button.dataset.delete); });
   document.querySelectorAll("[data-upgrade]").forEach((button) => { button.onclick = () => upgradeNode(button.dataset.upgrade); });
+  document.querySelectorAll("[data-power-action]").forEach((button) => { button.onclick = () => powerNode(button.dataset.node, button.dataset.powerAction); });
   document.querySelectorAll("[data-copy-ip]").forEach((button) => { button.onclick = () => copyText(button.dataset.copyIp).then(() => toast(`已复制 ${button.dataset.copyIp}`)).catch((error) => toast(error.message)); });
 }
 
@@ -309,6 +314,26 @@ async function upgradeNode(id) {
   try { await api(`nodes/${id}/upgrade`, { method: "POST" }); toast("升级指令已发送"); }
   catch (error) { if (error.status !== 401) toast(error.message); }
 }
+async function upgradeAllNodes() {
+  if (!state.nodes.length) { toast("暂无节点可以升级"); return; }
+  if (!confirm(`向全部 ${state.nodes.length} 台节点发送探针升级指令？离线节点会在重新上线后执行。`)) return;
+  try {
+    const result = await api("nodes/upgrade-all", { method: "POST" });
+    toast(`已为 ${result.count} 台节点排队升级`);
+  } catch (error) { if (error.status !== 401) toast(error.message); }
+}
+async function powerNode(id, action) {
+  const node = state.nodes.find((item) => item.id === id);
+  if (!node || !online(node)) { toast("节点离线，不能发送电源指令"); return; }
+  const shutdown = action === "shutdown";
+  const warning = shutdown ? "关机后无法通过面板远程开机，请确认有其他开机方式。" : "重启会暂时断开节点连接，请先保存节点上的工作。";
+  if (!confirm(`确定要${shutdown ? "关机" : "重启"}“${node.name}”（${node.ip}）吗？\n${warning}`)) return;
+  try {
+    await api(`nodes/${id}/power`, { method: "POST", body: JSON.stringify({ action }) });
+    await load();
+    toast(`${shutdown ? "关机" : "重启"}指令已排队，在线探针将很快执行`);
+  } catch (error) { if (error.status !== 401) toast(error.message); }
+}
 async function deleteGroup(id) {
   const group = state.groups.find((item) => item.id === id);
   if (!confirm(`确定删除分组“${group.name}”？组内服务器将变为未分组。`)) return;
@@ -376,6 +401,8 @@ document.querySelectorAll("[data-sort]").forEach((button) => { button.onclick = 
 $("#installAgentBtn").onclick = openInstallCommand; $("#emptyInstallBtn").onclick = openInstallCommand;
 $("#addGroupBtn").onclick = () => openEntityForm("group"); $("#tokenBtn").onclick = () => state.token ? openChangeToken() : openToken();
 $("#search").oninput = (event) => { state.query = event.target.value.trim().toLowerCase(); renderNodes(); };
+$("#mobileGroupSelect").onchange = (event) => { state.group = event.target.value; render(); };
+$("#upgradeAllBtn").onclick = upgradeAllNodes;
 $("#copyInstallCommand").onclick = () => copyText($("#installCommand").textContent).then(() => toast("安装命令已复制")).catch((error) => toast(error.message));
 $("#copyUninstallCommand").onclick = () => copyText($("#uninstallCommand").textContent).then(() => toast("卸载命令已复制")).catch((error) => toast(error.message));
 $("#commandDone").onclick = () => $("#commandDialog").close();

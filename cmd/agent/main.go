@@ -85,6 +85,10 @@ func main() {
 				if err := selfUninstall(); err != nil {
 					log.Printf("安排卸载失败，将重试：%v", err)
 				}
+			} else if commands.Power != "" {
+				if err := selfPower(commands.Power); err != nil {
+					log.Printf("安排%s失败：%v", commands.Power, err)
+				}
 			} else if commands.Upgrade && time.Since(lastUpgrade) > time.Minute {
 				lastUpgrade = time.Now()
 				log.Printf("收到升级指令")
@@ -247,8 +251,9 @@ func defaultNodeID() string {
 }
 
 type agentCommands struct {
-	Upgrade   bool `json:"upgrade"`
-	Uninstall bool `json:"uninstall"`
+	Upgrade   bool   `json:"upgrade"`
+	Uninstall bool   `json:"uninstall"`
+	Power     string `json:"power"`
 }
 
 func report(client *http.Client, panel, token, nodeID, nodeName string, m metrics) (agentCommands, error) {
@@ -257,8 +262,9 @@ func report(client *http.Client, panel, token, nodeID, nodeName string, m metric
 		Name               string `json:"name"`
 		Version            string `json:"version"`
 		UninstallSupported bool   `json:"uninstallSupported"`
+		PowerSupported     bool   `json:"powerSupported"`
 		metrics
-	}{nodeID, nodeName, version, true, m}
+	}{nodeID, nodeName, version, true, true, m}
 	b, _ := json.Marshal(payload)
 	req, _ := http.NewRequest(http.MethodPost, panel+"/api/report", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
@@ -285,6 +291,24 @@ func selfUninstall() error {
 		return err
 	}
 	cmd := exec.Command("systemd-run", "--unit=tz-agent-uninstall", "--collect", "bash", "-c", string(script))
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	return cmd.Run()
+}
+
+// Queue the action in a transient systemd timer so it survives the probe
+// stopping as the host powers down. No arbitrary command text is accepted.
+func selfPower(action string) error {
+	command := ""
+	switch action {
+	case "reboot":
+		command = "reboot"
+	case "shutdown":
+		command = "poweroff"
+	default:
+		return fmt.Errorf("unsupported power action %q", action)
+	}
+	unit := fmt.Sprintf("tz-agent-%s-%d", action, time.Now().UnixNano())
+	cmd := exec.Command("systemd-run", "--unit="+unit, "--collect", "--on-active=3s", "--timer-property=AccuracySec=1s", "systemctl", command)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	return cmd.Run()
 }

@@ -192,6 +192,35 @@ func (s *server) api(w http.ResponseWriter, r *http.Request) {
 		respondErr(w, s.store.DeleteNode(parts[1]))
 	case len(parts) == 3 && parts[0] == "nodes" && parts[2] == "upgrade" && r.Method == http.MethodPost:
 		respondErr(w, s.store.RequestUpgrade(parts[1]))
+	case path == "nodes/upgrade-all" && r.Method == http.MethodPost:
+		count, err := s.store.RequestUpgradeAll()
+		if err != nil {
+			jsonError(w, "发送升级指令失败", 500)
+			return
+		}
+		writeJSON(w, map[string]int{"count": count})
+	case len(parts) == 3 && parts[0] == "nodes" && parts[2] == "power" && r.Method == http.MethodPost:
+		var in struct {
+			Action string `json:"action"`
+		}
+		if !decode(w, r, &in) {
+			return
+		}
+		err := s.store.RequestPower(parts[1], in.Action)
+		switch {
+		case err == nil:
+			writeJSON(w, map[string]bool{"ok": true})
+		case errors.Is(err, store.ErrInvalidPowerAction):
+			jsonError(w, "只允许重启或关机", 400)
+		case errors.Is(err, store.ErrNodeOffline):
+			jsonError(w, "节点已离线，未发送指令", 409)
+		case errors.Is(err, store.ErrPowerPending):
+			jsonError(w, "已有待执行的重启或关机指令", 409)
+		case errors.Is(err, os.ErrNotExist):
+			jsonError(w, "节点不存在", 404)
+		default:
+			jsonError(w, "发送指令失败", 500)
+		}
 	case path == "groups" && r.Method == http.MethodPost:
 		var in struct {
 			Name string
@@ -246,6 +275,7 @@ func (s *server) report(w http.ResponseWriter, r *http.Request) {
 		Name               string `json:"name"`
 		Version            string `json:"version"`
 		UninstallSupported bool   `json:"uninstallSupported"`
+		PowerSupported     bool   `json:"powerSupported"`
 		store.Metrics
 	}
 	if !decode(w, r, &in) {
@@ -258,7 +288,7 @@ func (s *server) report(w http.ResponseWriter, r *http.Request) {
 	if forwarded := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]); forwarded != "" {
 		host = forwarded
 	}
-	var upgrade bool
+	var commands store.NodeCommands
 	if token == s.agentToken && validNodeID(in.NodeID) {
 		name := strings.TrimSpace(in.Name)
 		if name == "" {
@@ -267,10 +297,10 @@ func (s *server) report(w http.ResponseWriter, r *http.Request) {
 		if len(name) > 60 {
 			name = name[:60]
 		}
-		upgrade, err = s.store.AutoReport(in.NodeID, name, host, in.Version, in.Metrics)
+		commands, err = s.store.AutoReportCommands(in.NodeID, name, host, in.Version, in.Metrics, in.PowerSupported)
 	} else {
 		// Keep existing per-node tokens working during migration.
-		upgrade, err = s.store.Report(token, host, in.Version, in.Metrics)
+		commands, err = s.store.ReportCommands(token, host, in.Version, in.Metrics, in.PowerSupported)
 	}
 	if errors.Is(err, store.ErrRemovalPending) {
 		writeJSON(w, map[string]any{"ok": true, "uninstall": in.UninstallSupported, "upgrade": !in.UninstallSupported})
@@ -280,7 +310,7 @@ func (s *server) report(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "探针令牌无效", http.StatusUnauthorized)
 		return
 	}
-	writeJSON(w, map[string]any{"ok": true, "upgrade": upgrade})
+	writeJSON(w, map[string]any{"ok": true, "upgrade": commands.Upgrade, "power": commands.Power})
 }
 
 func validNodeID(id string) bool {

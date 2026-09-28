@@ -11,7 +11,7 @@
 <body>
   <div class="shell">
     <header class="topbar">
-      <div class="brand"><span class="brand-mark"><i></i><i></i><i></i></span><span>TZ</span><em>服务器监控</em></div>
+      <a class="brand" id="homeLink" href="/" aria-label="返回探针监控页面"><span class="brand-mark"><i></i><i></i><i></i></span><span>TZ</span><em>服务器监控</em></a>
       <div class="top-actions"><span id="syncStatus" class="sync"><b></b>正在连接</span><label class="theme-control"><span>主题</span><select id="themeSelect" aria-label="主题"><option value="dark">暗色</option><option value="light">亮色</option></select></label><button class="btn ghost" id="ddnsNavBtn">DDNS</button><button class="btn ghost" id="tokenBtn">管理令牌</button><button class="btn primary" id="installAgentBtn"><span>↓</span> 安装探针</button></div>
     </header>
 
@@ -26,12 +26,13 @@
       <section class="workspace">
         <aside class="groups">
           <div class="section-head"><h2>分组</h2><button class="icon-btn" id="addGroupBtn" aria-label="添加分组">＋</button></div>
+          <label class="mobile-group-switch" for="mobileGroupSelect"><span>切换分组</span><select id="mobileGroupSelect" aria-label="切换分组"><option value="">全部服务器</option></select></label>
           <nav id="groupList"><button class="group active" data-group=""><span><i class="dot all"></i>全部服务器</span><b>0</b></button></nav>
           <div class="group-status"><button type="button" class="status-filter" data-status="online" aria-pressed="false" title="筛选在线服务器"><i class="dot online"></i><b id="onlineCount">0</b> 台在线</button><button type="button" class="status-filter" data-status="offline" aria-pressed="false" title="筛选离线服务器"><i class="dot offline"></i><b id="offlineCount">0</b> 台离线</button></div>
         </aside>
 
         <section class="servers">
-          <div class="section-head list-head"><div><h2 id="listTitle">全部服务器</h2><p id="listMeta">0 台服务器</p></div><div class="list-tools"><div class="search"><span>⌕</span><input id="search" type="search" placeholder="搜索名称或 IP" aria-label="搜索服务器"></div><button type="button" class="btn ghost columns-btn" id="columnsBtn">☷ 列设置</button></div></div>
+          <div class="section-head list-head"><div><h2 id="listTitle">全部服务器</h2><p id="listMeta">0 台服务器</p></div><div class="list-tools"><div class="search"><span>⌕</span><input id="search" type="search" placeholder="搜索名称或 IP" aria-label="搜索服务器"></div><button type="button" class="btn ghost" id="upgradeAllBtn">↻ 全部升级</button><button type="button" class="btn ghost columns-btn" id="columnsBtn">☷ 列设置</button></div></div>
           <div class="table-wrap">
             <table>
               <thead><tr id="tableHeader"><th data-column="sort" data-sort-heading="sort"><button type="button" class="sort-heading" data-sort="sort">排序 <span aria-hidden="true">↕</span></button></th><th data-column="server">服务器</th><th data-column="note">备注</th><th data-column="uploadSpeed" data-sort-heading="uploadSpeed"><button type="button" class="sort-heading" data-sort="uploadSpeed">上传速度 <span aria-hidden="true">↕</span></button></th><th data-column="downloadSpeed" data-sort-heading="downloadSpeed"><button type="button" class="sort-heading" data-sort="downloadSpeed">下载速度 <span aria-hidden="true">↕</span></button></th><th data-column="todayUpload" data-sort-heading="todayUpload"><button type="button" class="sort-heading" data-sort="todayUpload">今日上传 <span aria-hidden="true">↕</span></button></th><th data-column="todayDownload" data-sort-heading="todayDownload"><button type="button" class="sort-heading" data-sort="todayDownload">今日下载 <span aria-hidden="true">↕</span></button></th><th data-column="yesterdayUpload" data-sort-heading="yesterdayUpload"><button type="button" class="sort-heading" data-sort="yesterdayUpload">昨日上传 <span aria-hidden="true">↕</span></button></th><th data-column="yesterdayDownload" data-sort-heading="yesterdayDownload"><button type="button" class="sort-heading" data-sort="yesterdayDownload">昨日下载 <span aria-hidden="true">↕</span></button></th><th data-column="totalUpload">总上传</th><th data-column="totalDownload">总下载</th><th data-column="uptime">运行时间</th><th data-column="cpu">CPU</th><th data-column="memory">内存</th><th data-column="disk">存储</th><th data-column="actions">操作</th></tr></thead>

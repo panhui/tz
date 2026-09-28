@@ -127,3 +127,46 @@ func TestDeleteQueuesUninstallAcrossRestart(t *testing.T) {
 		t.Fatal("deleted node re-enrolled")
 	}
 }
+
+func TestPowerAPIAndUpgradeAll(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "data.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AutoReport("node-12345678", "", "192.0.2.1", "v0.18.0", store.Metrics{}); err != nil {
+		t.Fatal(err)
+	}
+	app := &server{store: s, adminToken: "admin", agentToken: "shared"}
+	request := func(method, path, body, token string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		if path == "/api/report" {
+			req.Header.Set("X-Agent-Token", "shared")
+		}
+		w := httptest.NewRecorder()
+		app.api(w, req)
+		return w
+	}
+	if w := request("POST", "/api/nodes/node-12345678/power", `{"action":"reboot"}`, ""); w.Code != 401 {
+		t.Fatalf("unauthorized request accepted: %s", w.Body)
+	}
+	if w := request("POST", "/api/nodes/node-12345678/power", `{"action":"command"}`, "admin"); w.Code != 400 {
+		t.Fatalf("invalid power command accepted: %s", w.Body)
+	}
+	if w := request("POST", "/api/nodes/node-12345678/power", `{"action":"reboot"}`, "admin"); w.Code != 200 {
+		t.Fatalf("power command rejected: %s", w.Body)
+	}
+	if w := request("POST", "/api/nodes/upgrade-all", "", "admin"); w.Code != 200 || !strings.Contains(w.Body.String(), `"count":1`) {
+		t.Fatalf("upgrade all failed: %s", w.Body)
+	}
+	old := request("POST", "/api/report", `{"nodeId":"node-12345678","powerSupported":false}`, "")
+	if old.Code != 200 || !strings.Contains(old.Body.String(), `"upgrade":true`) || !strings.Contains(old.Body.String(), `"power":""`) {
+		t.Fatalf("old agent must upgrade first: %s", old.Body)
+	}
+	newAgent := request("POST", "/api/report", `{"nodeId":"node-12345678","powerSupported":true}`, "")
+	if newAgent.Code != 200 || !strings.Contains(newAgent.Body.String(), `"power":"reboot"`) {
+		t.Fatalf("power not delivered: %s", newAgent.Body)
+	}
+}

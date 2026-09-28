@@ -39,6 +39,8 @@ type Node struct {
 	Version                    string    `json:"version"`
 	LastSeen                   time.Time `json:"lastSeen"`
 	UpgradeRequested           bool      `json:"upgradeRequested,omitempty"`
+	PowerRequested             string    `json:"powerRequested,omitempty"`
+	PowerRequestedAt           time.Time `json:"powerRequestedAt,omitempty"`
 	TrafficDate                string    `json:"trafficDate"`
 	TodayUpload                uint64    `json:"todayUpload"`
 	TodayDownload              uint64    `json:"todayDownload"`
@@ -298,33 +300,51 @@ func (s *Store) DeleteGroup(id string) error {
 }
 
 func (s *Store) Report(agentToken, ip, version string, metrics Metrics) (bool, error) {
+	commands, err := s.ReportCommands(agentToken, ip, version, metrics, false)
+	return commands.Upgrade, err
+}
+
+type NodeCommands struct {
+	Upgrade bool   `json:"upgrade"`
+	Power   string `json:"power,omitempty"`
+}
+
+var ErrNodeOffline = errors.New("node offline")
+var ErrPowerPending = errors.New("power command already pending")
+var ErrInvalidPowerAction = errors.New("invalid power action")
+
+func (s *Store) ReportCommands(agentToken, ip, version string, metrics Metrics, powerSupported bool) (NodeCommands, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, removed := range s.data.RemovedNodes {
 		if agentToken != "" && removed.AgentToken == agentToken {
-			return false, ErrRemovalPending
+			return NodeCommands{}, ErrRemovalPending
 		}
 	}
 	for i := range s.data.Nodes {
 		n := &s.data.Nodes[i]
 		if agentToken != "" && n.AgentToken == agentToken {
 			n.applyReport(ip, version, metrics, s.now())
-			upgrade := n.UpgradeRequested
-			n.UpgradeRequested = false
-			return upgrade, s.saveLocked()
+			commands := n.takeCommands(powerSupported, s.now())
+			return commands, s.saveLocked()
 		}
 	}
-	return false, os.ErrNotExist
+	return NodeCommands{}, os.ErrNotExist
 }
 
 // AutoReport updates an automatically enrolled node, creating it on the first
 // heartbeat. Its display name defaults to the observed IP and dashboard edits win.
 func (s *Store) AutoReport(nodeID, name, ip, version string, metrics Metrics) (bool, error) {
+	commands, err := s.AutoReportCommands(nodeID, name, ip, version, metrics, false)
+	return commands.Upgrade, err
+}
+
+func (s *Store) AutoReportCommands(nodeID, name, ip, version string, metrics Metrics, powerSupported bool) (NodeCommands, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, removed := range s.data.RemovedNodes {
 		if removed.ID == nodeID {
-			return false, ErrRemovalPending
+			return NodeCommands{}, ErrRemovalPending
 		}
 	}
 	for i := range s.data.Nodes {
@@ -334,15 +354,31 @@ func (s *Store) AutoReport(nodeID, name, ip, version string, metrics Metrics) (b
 				n.Name = ip
 			}
 			n.applyReport(ip, version, metrics, s.now())
-			upgrade := n.UpgradeRequested
-			n.UpgradeRequested = false
-			return upgrade, s.saveLocked()
+			commands := n.takeCommands(powerSupported, s.now())
+			return commands, s.saveLocked()
 		}
 	}
 	n := Node{ID: nodeID, Name: ip, GroupIDs: []string{}, Sort: 0}
 	n.applyReport(ip, version, metrics, s.now())
 	s.data.Nodes = append(s.data.Nodes, n)
-	return false, s.saveLocked()
+	return NodeCommands{}, s.saveLocked()
+}
+
+func (n *Node) takeCommands(powerSupported bool, now time.Time) NodeCommands {
+	if n.PowerRequested != "" && now.Sub(n.PowerRequestedAt) > 2*time.Minute {
+		n.PowerRequested, n.PowerRequestedAt = "", time.Time{}
+	}
+	if n.PowerRequested != "" {
+		if powerSupported {
+			command := NodeCommands{Power: n.PowerRequested}
+			n.PowerRequested, n.PowerRequestedAt = "", time.Time{}
+			return command
+		}
+		return NodeCommands{Upgrade: true}
+	}
+	upgrade := n.UpgradeRequested
+	n.UpgradeRequested = false
+	return NodeCommands{Upgrade: upgrade}
 }
 
 var trafficLocation = time.FixedZone("Asia/Shanghai", 8*60*60)
@@ -469,6 +505,42 @@ func (s *Store) RequestUpgrade(id string) error {
 			s.data.Nodes[i].UpgradeRequested = true
 			return s.saveLocked()
 		}
+	}
+	return os.ErrNotExist
+}
+
+func (s *Store) RequestUpgradeAll() (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.data.Nodes {
+		s.data.Nodes[i].UpgradeRequested = true
+	}
+	if len(s.data.Nodes) == 0 {
+		return 0, nil
+	}
+	return len(s.data.Nodes), s.saveLocked()
+}
+
+func (s *Store) RequestPower(id, action string) error {
+	if action != "reboot" && action != "shutdown" {
+		return ErrInvalidPowerAction
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.now()
+	for i := range s.data.Nodes {
+		n := &s.data.Nodes[i]
+		if n.ID != id {
+			continue
+		}
+		if n.LastSeen.IsZero() || now.Sub(n.LastSeen) > 15*time.Second {
+			return ErrNodeOffline
+		}
+		if n.PowerRequested != "" && now.Sub(n.PowerRequestedAt) <= 2*time.Minute {
+			return ErrPowerPending
+		}
+		n.PowerRequested, n.PowerRequestedAt = action, now
+		return s.saveLocked()
 	}
 	return os.ErrNotExist
 }
