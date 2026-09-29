@@ -187,11 +187,7 @@ function render() {
 
 function renderGroups() {
   const counts = {}; state.nodes.forEach((node) => { groupIDs(node).forEach((groupID) => { counts[groupID] = (counts[groupID] || 0) + 1; }); });
-  const mobileSelect = $("#mobileGroupSelect");
-  const mobileOptions = `<option value="">全部服务器 (${state.nodes.length})</option>` + state.groups.map((group) => `<option value="${escapeHTML(group.id)}">${escapeHTML(group.name)} (${counts[group.id] || 0})</option>`).join("");
-  if (mobileSelect.innerHTML !== mobileOptions) mobileSelect.innerHTML = mobileOptions;
-  mobileSelect.value = state.group;
-  $("#groupList").innerHTML = `<button class="group ${state.group === "" ? "active" : ""}" data-group=""><span><i class="dot all"></i>全部服务器</span><b>${state.nodes.length}</b></button>` + state.groups.map((group) => `<div class="group-row"><button class="group ${state.group === group.id ? "active" : ""}" data-group="${group.id}"><span><i class="dot online"></i>${escapeHTML(group.name)}</span><b>${counts[group.id] || 0}</b></button><button class="group-edit" data-group-edit="${group.id}" title="编辑分组">✎</button><button class="group-delete" data-group-delete="${group.id}" title="删除分组">×</button></div>`).join("");
+  $("#groupList").innerHTML = `<button class="group ${state.group === "" ? "active" : ""}" data-group=""><span class="group-label"><i class="dot all"></i><span class="group-name">全部服务器</span></span><b>${state.nodes.length}</b></button>` + state.groups.map((group) => `<div class="group-row"><button class="group ${state.group === group.id ? "active" : ""}" data-group="${group.id}" title="${escapeHTML(group.name)}"><span class="group-label"><i class="dot online"></i><span class="group-name">${escapeHTML(group.name)}</span></span><b>${counts[group.id] || 0}</b></button><button class="group-edit" data-group-edit="${group.id}" title="编辑分组">✎</button><button class="group-delete" data-group-delete="${group.id}" title="删除分组">×</button></div>`).join("");
   document.querySelectorAll(".group").forEach((button) => { button.onclick = () => { state.group = button.dataset.group; render(); }; });
   document.querySelectorAll("[data-group-edit]").forEach((button) => { button.onclick = () => openEntityForm("group", state.groups.find((group) => group.id === button.dataset.groupEdit)); });
   document.querySelectorAll("[data-group-delete]").forEach((button) => { button.onclick = () => deleteGroup(button.dataset.groupDelete); });
@@ -401,7 +397,6 @@ document.querySelectorAll("[data-sort]").forEach((button) => { button.onclick = 
 $("#installAgentBtn").onclick = openInstallCommand; $("#emptyInstallBtn").onclick = openInstallCommand;
 $("#addGroupBtn").onclick = () => openEntityForm("group"); $("#tokenBtn").onclick = () => state.token ? openChangeToken() : openToken();
 $("#search").oninput = (event) => { state.query = event.target.value.trim().toLowerCase(); renderNodes(); };
-$("#mobileGroupSelect").onchange = (event) => { state.group = event.target.value; render(); };
 $("#upgradeAllBtn").onclick = upgradeAllNodes;
 $("#copyInstallCommand").onclick = () => copyText($("#installCommand").textContent).then(() => toast("安装命令已复制")).catch((error) => toast(error.message));
 $("#copyUninstallCommand").onclick = () => copyText($("#uninstallCommand").textContent).then(() => toast("卸载命令已复制")).catch((error) => toast(error.message));

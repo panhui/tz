@@ -89,7 +89,9 @@ html[data-theme="light"] .field textarea{background:#fff}
 @media(max-width:760px){.field textarea{font-size:16px}}
 .topbar{position:static}
 .brand{color:var(--text);text-decoration:none}.brand:hover{color:var(--lime)}.brand:focus-visible{outline:2px solid var(--lime);outline-offset:5px;border-radius:5px}
-.mobile-group-switch{display:none}
+.group .group-label{flex:1;min-width:0}
+.group .group-name{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.group .dot,.group b{flex:none}
 .list-tools>.btn{white-space:nowrap}
 .row-actions .power-action{width:auto;min-width:40px;padding:0 7px;font-size:11px;font-weight:650}
 .row-actions .power-action.danger:hover{color:var(--danger)}.row-actions .power-action:disabled{opacity:.35;cursor:not-allowed}
@@ -100,10 +102,11 @@ html[data-theme="light"] .field textarea{background:#fff}
   .theme-control select{padding:7px 20px 7px 6px;font-size:11px}
   .top-actions{gap:4px;min-width:0}
   .top-actions .btn{font-size:11px;padding:8px 7px;white-space:nowrap}
-  .mobile-group-switch{display:flex;align-items:center;gap:10px;margin:9px 4px 4px;color:var(--muted);font-size:12px}
-  .mobile-group-switch span{flex:none}
-  .mobile-group-switch select{flex:1;min-width:0;min-height:44px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);color:var(--text);padding:0 12px;font:inherit;font-size:15px}
-  #groupList{display:none}
+  #groupList{display:flex;flex-direction:column;overflow:visible;gap:4px;margin-top:8px;padding-bottom:0}
+  .group-row{width:100%;min-width:0}
+  .group{width:100%;min-width:0;min-height:34px;padding:6px 9px;font-size:12px}
+  .group .group-label{gap:7px}
+  .group b{margin-left:8px;font-size:11px}
   .group-row .group-edit,.group-row .group-delete{display:none!important}
   .overview{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
   .stat.paired{padding:12px 11px;min-height:0;overflow:hidden}
