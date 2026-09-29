@@ -102,8 +102,9 @@ html[data-theme="light"] .field textarea{background:#fff}
   .theme-control select{padding:7px 20px 7px 6px;font-size:11px}
   .top-actions{gap:4px;min-width:0}
   .top-actions .btn{font-size:11px;padding:8px 7px;white-space:nowrap}
-  #groupList{display:flex;flex-direction:column;overflow:visible;gap:4px;margin-top:8px;padding-bottom:0}
-  .group-row{width:100%;min-width:0}
+  #groupList{display:flex;flex-direction:row;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;gap:5px;margin-top:8px;padding-bottom:4px;scrollbar-width:thin}
+  #groupList>.group,#groupList>.group-row{flex:0 0 auto;width:max-content;min-width:88px;max-width:132px}
+  .group-row{min-width:0}
   .group{width:100%;min-width:0;min-height:34px;padding:6px 9px;font-size:12px}
   .group .group-label{gap:7px}
   .group b{margin-left:8px;font-size:11px}
